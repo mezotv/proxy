@@ -341,6 +341,7 @@ function AccessGrid({agent, connections, onChange, onMakeDefault}: GridProps) {
 									actions={actions}
 									defaults={defaultActions(connection)}
 									unavailable={connection.unavailable}
+									signInNeeded={connection.signInNeeded}
 									own={own}
 									onChange={(changes) => onChange(connection.id, changes)}
 									onMakeDefault={(actionId, allowed) =>

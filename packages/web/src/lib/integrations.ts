@@ -47,6 +47,8 @@ const LOGOS: Record<IntegrationId, LucideIcon | IntegrationLogoImage> = {
 	granola: {src: '/integrations/granola.png', fill: true},
 	notion: {src: '/integrations/notion.svg'},
 	linear: {src: '/integrations/linear.svg', fill: true},
+	exa: {src: '/integrations/exa.svg'},
+	parallel: {src: '/integrations/parallel.svg'},
 	plaid: {src: '/integrations/plaid.svg'},
 	postgres: {src: '/integrations/postgresql.svg'},
 	mysql: {src: '/integrations/mysql.svg'},
@@ -82,13 +84,14 @@ export function integrationOf(connection: {
 // `?error=<id>-unconfigured` when the server lacks what it needs. Started with
 // `?returnTo=welcome`, it comes back to the welcome flow's page for the connection, or its catalog;
 // with `?account=`, as signing in again from a connection does, the service opens on that account
-// where it can.
-const SIGN_IN: IntegrationId[] = ['google', 'granola', 'notion', 'linear'];
+// where it can, and with `?connection=` the sign-in renews that connection, whatever account it
+// is for.
+const SIGN_IN: IntegrationId[] = ['google', 'granola', 'notion', 'linear', 'exa', 'parallel'];
 
 /** Where signing in to an integration starts, or null for one connected on a form of its own. */
 export function signInPath(
 	integrationId: string,
-	query: {returnTo?: 'welcome'; account?: string} = {},
+	query: {returnTo?: 'welcome'; account?: string; connection?: string} = {},
 ): string | null {
 	if (!SIGN_IN.some((id) => id === integrationId)) {
 		return null;

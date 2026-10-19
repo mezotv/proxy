@@ -448,6 +448,90 @@ const linear: Integration = {
 	],
 };
 
+// The web, searched and read through a search engine made for agents, through its MCP server after
+// signing in to it: what an agent searches for and the pages it reads go to the provider, on the
+// account signed in with. A search is answered as the provider's results, each page's title,
+// address and the passages that fit the query; a page as its text. Nothing is listed or kept:
+// searches and pages are only ever run.
+function webIntegration(id: 'exa' | 'parallel', name: string, description: string): Integration {
+	return {
+		id,
+		name,
+		description,
+		actions: [
+			{
+				id: 'search',
+				label: 'Search the web',
+				description:
+					'Search the web, describing what to find in plain words, for pages with the passages that fit',
+				risk: 'low',
+			},
+			{
+				id: 'fetch',
+				label: 'Read web pages',
+				description: 'Read a web page’s text by its address',
+				risk: 'low',
+			},
+		],
+		collections: [
+			{
+				id: 'searches',
+				name: 'Searches',
+				singular: 'search',
+				titleField: 'query',
+				writes: {},
+				commands: [
+					{
+						id: 'run',
+						on: 'new',
+						label: 'Run',
+						action: 'search',
+						readOnly: true,
+						done: 'Ran {}',
+						tried: 'run {}',
+					},
+				],
+				fields: [
+					// What to find, described in plain words: "blog posts comparing React and Vue performance".
+					{key: 'query', label: 'Query', type: 'text'},
+					// One page a block, "Title: …", "URL: …", "Published: …" and its passages, the blocks
+					// between "---" lines.
+					{key: 'results', label: 'Results', type: 'longtext', system: true},
+				],
+			},
+			{
+				id: 'pages',
+				name: 'Pages',
+				singular: 'page',
+				titleField: 'url',
+				summaryField: 'title',
+				writes: {},
+				commands: [
+					{
+						id: 'read',
+						on: 'new',
+						label: 'Read',
+						action: 'fetch',
+						readOnly: true,
+						done: 'Read {}',
+						tried: 'read {}',
+					},
+				],
+				fields: [
+					{key: 'url', label: 'URL', type: 'text'},
+					{key: 'title', label: 'Title', type: 'text', system: true},
+					// As Markdown, where the provider gives it so.
+					{key: 'content', label: 'Content', type: 'longtext', system: true},
+				],
+			},
+		],
+	};
+}
+
+const exa = webIntegration('exa', 'Exa', 'Search and read the web');
+
+const parallel = webIntegration('parallel', 'Parallel', 'Search and read the web');
+
 // A SQL database, signed in to with a database user's name and password: PostgreSQL, or MySQL
 // and MariaDB. What the user may do in the database is the limit, so access is narrowed in
 // Personal Agent Proxy: the tables and their rows are one tree, a table holding its rows, and a
@@ -1151,6 +1235,8 @@ export const INTEGRATIONS: Integration[] = [
 	granola,
 	notion,
 	linear,
+	exa,
+	parallel,
 	plaid,
 	postgres,
 	mysql,

@@ -1,0 +1,49 @@
+import {describe, expect, mock, test} from 'bun:test';
+
+import {findCollection, findIntegration, requiredAction} from '@proxy/integrations';
+
+mock.module('../utils/env', () => ({env: {NODE_ENV: 'production', APP_URL: 'https://app.example.com'}}));
+
+const {BUILT_IN_MCP, builtInForHost} = await import('./built-in-mcp');
+const {builtInHosts} = await import('./mcp/built-in');
+
+describe('BUILT_IN_MCP', () => {
+	test("every entry is an integration of the catalog's, and its defaults and tools' actions are its actions", () => {
+		for (const builtIn of BUILT_IN_MCP) {
+			const integration = findIntegration(builtIn.integrationId);
+			expect(integration?.custom, builtIn.integrationId).toBeUndefined();
+			const actions = integration?.actions.map((action) => action.id) ?? [];
+			expect(actions, builtIn.integrationId).toEqual(expect.arrayContaining(builtIn.defaults));
+			for (const [name, tool] of Object.entries(builtIn.tools)) {
+				expect(tool.actions.length, `${builtIn.integrationId} ${name}`).toBeGreaterThan(0);
+				expect(actions, `${builtIn.integrationId} ${name}`).toEqual(expect.arrayContaining(tool.actions));
+			}
+		}
+	});
+
+	test("every tool's runs become requests its collections have, needing one of the tool's own actions", () => {
+		for (const builtIn of BUILT_IN_MCP) {
+			const integration = findIntegration(builtIn.integrationId);
+			for (const [name, tool] of Object.entries(builtIn.tools)) {
+				const run = tool.run?.(null);
+				if (!run || !integration) {
+					continue;
+				}
+				const collection = findCollection(integration, run.collectionId);
+				expect(collection, `${builtIn.integrationId} ${name}`).toBeDefined();
+				expect(tool.actions, `${builtIn.integrationId} ${name}`).toContain(collection ? (requiredAction(collection, run.operation) ?? '') : '');
+			}
+		}
+	});
+
+	test('no two integrations take over the same host', () => {
+		const hosts = BUILT_IN_MCP.flatMap(builtInHosts);
+		expect(new Set(hosts).size).toBe(hosts.length);
+	});
+
+	test('finds the integration by host, as an address writes it', () => {
+		expect(builtInForHost('mcp.linear.app')?.integrationId).toBe('linear');
+		expect(builtInForHost('Search.Parallel.ai')?.integrationId).toBe('parallel');
+		expect(builtInForHost('mcp.example.com')).toBeUndefined();
+	});
+});

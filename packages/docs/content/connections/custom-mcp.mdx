@@ -24,6 +24,13 @@ authorization server to the same rule; a server on a private address needs Perso
 [self-hosted](/self-hosting) beside it, with `ALLOW_PRIVATE_HOSTS` set, and may then be reached over
 `http`.
 
+The servers of the services Personal Agent Proxy connects itself, [Granola](/connections/granola),
+[Notion](/connections/notion), [Linear](/connections/linear), [Exa](/connections/exa) and
+[Parallel](/connections/parallel), are connected as those services: entering one's address opens
+the service's own sign-in, and makes a connection of the service under the name you gave, as
+adding it from the list of connections does. An access token is not needed for them. See also
+[When a server becomes built in](#when-a-server-becomes-built-in).
+
 ### Sign in, if the server asks
 
 Personal Agent Proxy asks the server for its tools. A server that answers is connected at once. One
@@ -68,3 +75,17 @@ which authorization server its tokens come from, Personal Agent Proxy registers 
 client, and you approve access on the authorization server's own page. Tokens are refreshed as they
 run out. A server whose authorization server does not let clients register themselves cannot be
 connected this way; use an access token instead, where the server offers one.
+
+## When a server becomes built in
+
+When Personal Agent Proxy starts connecting a service itself, a custom server you added for it
+becomes a connection of that service the next time Personal Agent Proxy starts. It keeps its name,
+its agents and its activity:
+
+- Each of the service's actions is on, by default or for an agent, only where every tool it is made
+  of was on, so nothing is allowed that wasn't before. Settings for tools the service has no action
+  for are dropped.
+- Tool runs in the activity log become the service's own requests, such as listing Linear issues
+  or running a web search. Runs of tools it has no action for stay as they were.
+- A server you signed in to stays signed in. One connected with an access token, or without one,
+  has to be signed in to before agents can use it: open the connection and choose **Sign in**.

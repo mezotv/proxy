@@ -10,9 +10,9 @@ const getConnectionWithCredential = mock();
 const updateConnectionTools = mock();
 const updateConnectionName = mock();
 
-// The authorization server, taking the registration a sign-in begins with.
+// The authorization servers, taking the registration a sign-in begins with.
 const fetchSpy = spyOn(globalThis, 'fetch').mockImplementation((async (input: string | URL | Request) => {
-	if (String(input) === 'https://mcp.example.com/register') {
+	if (String(input).endsWith('/register')) {
 		return Response.json({client_id: 'client-1'}, {status: 201});
 	}
 	return new Response('Not found', {status: 404});
@@ -23,6 +23,7 @@ afterAll(() => {
 });
 
 mock.module('@proxy/db/connection', () => ({
+	getConnection: mock(),
 	findAccountConnection,
 	createConnection,
 	renewConnection,
@@ -165,7 +166,7 @@ describe('handleConnectCustomMcpRoute', () => {
 		});
 		expect(res.sent).toEqual({
 			kind: 'connected',
-			connection: {id: 'mcp-1', integrationId: 'mcp', account: 'mcp.example.com/mcp', defaults: ['search_docs'], tools: [search, publish], name: 'Docs', unavailable: []},
+			connection: {id: 'mcp-1', integrationId: 'mcp', account: 'mcp.example.com/mcp', defaults: ['search_docs'], tools: [search, publish], name: 'Docs', unavailable: [], signInNeeded: false},
 		});
 	});
 
@@ -230,6 +231,23 @@ describe('handleConnectCustomMcpRoute', () => {
 		expect(res.statusCode).toBe(400);
 		expect(res.sent).toMatchObject({error: 'validation_error'});
 		expect(probeMcpServer).not.toHaveBeenCalled();
+	});
+
+	test('the server of an integration that is built in, whatever its path or query, is signed in to as that integration instead', async () => {
+		for (const [url, integrationId, authorize] of [
+			['https://mcp.exa.ai/mcp?tools=web_search_exa', 'exa', 'https://auth.exa.ai/oauth/authorize'],
+			['https://search.parallel.ai/mcp', 'parallel', 'https://platform.parallel.ai/getKeys/authorize'],
+			['https://mcp.linear.app/sse', 'linear', 'https://mcp.linear.app/authorize'],
+		] as const) {
+			const res = await connect({name: 'Search', url, token: 'key-1'});
+			expect(res.sent).toMatchObject({kind: 'signIn'});
+			const signIn = new URL((res.sent as {url: string}).url);
+			expect(signIn.origin + signIn.pathname).toBe(authorize);
+			expect(signIn.searchParams.get('redirect_uri')).toBe(`https://app.example.com/api/connections/${integrationId}/callback`);
+			expect(res.cookies.map((cookie) => [cookie.name, cookie.options.path])).toEqual([[`proxy.${integrationId}-state`, `/api/connections/${integrationId}`]]);
+		}
+		expect(probeMcpServer).not.toHaveBeenCalled();
+		expect(createConnection).not.toHaveBeenCalled();
 	});
 });
 

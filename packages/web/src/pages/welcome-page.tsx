@@ -316,7 +316,11 @@ function ConnectionStep({
 	const defaults = defaultActions(connection);
 	const signInAgain =
 		connection.unavailable.length > 0
-			? signInPath(connection.integrationId, {returnTo: 'welcome', account: connection.account})
+			? signInPath(connection.integrationId, {
+					returnTo: 'welcome',
+					account: connection.account,
+					connection: connection.id,
+				})
 			: null;
 
 	return (
@@ -336,6 +340,7 @@ function ConnectionStep({
 					actions={integration.actions}
 					defaults={defaults}
 					unavailable={connection.unavailable}
+					signInNeeded={connection.signInNeeded}
 					onChange={async (changes) => {
 						const result = await setConnectionDefaults(connection.id, defaultsOnOrOff(changes));
 						setError(result.isErr() ? describeFetchError(result.error) : null);
@@ -343,7 +348,7 @@ function ConnectionStep({
 					}}
 				/>
 			</div>
-			{signInAgain && <SignInAgain href={signInAgain} />}
+			{signInAgain && <SignInAgain href={signInAgain} needed={connection.signInNeeded} />}
 			{defaults.every((id) => connection.unavailable.includes(id)) && (
 				<p className="text-sm text-muted-foreground">
 					Nothing is ticked, so {agentName} can't use this account yet.

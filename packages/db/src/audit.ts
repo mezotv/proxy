@@ -65,3 +65,16 @@ export async function listAuditEntries(
 		}),
 	);
 }
+
+/** A connection's entries in one collection, such as a custom MCP server's tool runs, each its action and query. */
+export async function listCollectionEntries(
+	connectionId: string,
+	collectionId: string,
+): Promise<Result<Array<{id: string; action: string; query: string | null}>, ApiError>> {
+	return wrapDb(() =>
+		db.auditEntry.findMany({
+			where: {connectionId, collectionId},
+			select: {id: true, action: true, query: true},
+		}),
+	);
+}

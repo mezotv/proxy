@@ -103,6 +103,8 @@ export type IntegrationId =
 	| 'granola'
 	| 'notion'
 	| 'linear'
+	| 'exa'
+	| 'parallel'
 	| 'postgres'
 	| 'mysql'
 	| 'mcp'

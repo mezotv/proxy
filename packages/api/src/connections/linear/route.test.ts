@@ -4,11 +4,13 @@ import {Ok, type Result} from 'ts-results-es';
 import type {ApiError} from '@proxy/utils';
 
 const findAccountConnection = mock();
+const getConnection = mock();
 const createConnection = mock();
 const renewConnection = mock();
 
 mock.module('@proxy/db/connection', () => ({
 	findAccountConnection,
+	getConnection,
 	createConnection,
 	renewConnection,
 	updateConnectionCredential: mock(),
@@ -81,10 +83,10 @@ function makeRes() {
 
 const user = {userId: 'user-1', email: 'alex@example.com'};
 
-async function start() {
+async function start(query: Record<string, string> = {}) {
 	const {handleStartLinearRoute} = await import('./route');
 	const res = makeRes();
-	await handleStartLinearRoute({user, query: {}, headers: {}} as never, res as never);
+	await handleStartLinearRoute({user, query, headers: {}} as never, res as never);
 	const cookie = res.cookies.find((candidate) => candidate.name === 'proxy.linear-state');
 	const authorizeUrl = new URL(res.redirect.mock.calls[0]?.[0] as string);
 	return {cookie, authorizeUrl, state: authorizeUrl.searchParams.get('state') ?? ''};
@@ -146,6 +148,26 @@ describe('handleLinearCallbackRoute', () => {
 		expect(createConnection).not.toHaveBeenCalled();
 		expect(renewConnection.mock.calls[0]?.[0]).toMatchObject({connectionId: 'conn-0'});
 		expect(res.redirect).toHaveBeenCalledWith('https://app.example.com/connections/conn-0');
+	});
+
+	test('signing in again from a connection gives that one the new tokens, whatever account it showed', async () => {
+		getConnection.mockResolvedValue(Ok({id: 'conn-0', integrationId: 'linear', account: 'mcp.linear.app/mcp'}));
+		const {cookie, state} = await start({connection: 'conn-0'});
+		const res = await callback({cookie: cookie?.value ?? '', query: {state, code: 'code-1'}});
+
+		expect(getConnection).toHaveBeenCalledWith('org-1', 'conn-0');
+		expect(findAccountConnection).not.toHaveBeenCalled();
+		expect(renewConnection.mock.calls[0]?.[0]).toMatchObject({connectionId: 'conn-0', account: 'alex@example.com · Acme'});
+		expect(res.redirect).toHaveBeenCalledWith('https://app.example.com/connections/conn-0');
+	});
+
+	test('a connection of another integration, or gone, is no connection to sign in again', async () => {
+		getConnection.mockResolvedValue(Ok({id: 'conn-9', integrationId: 'notion', account: 'alex@example.com · Acme'}));
+		const {cookie, state} = await start({connection: 'conn-9'});
+		await callback({cookie: cookie?.value ?? '', query: {state, code: 'code-1'}});
+
+		expect(renewConnection).not.toHaveBeenCalled();
+		expect(createConnection.mock.calls[0]?.[0]).toMatchObject({integrationId: 'linear', account: 'alex@example.com · Acme'});
 	});
 
 	test('a sign-in turned down at Linear goes back to the catalog', async () => {

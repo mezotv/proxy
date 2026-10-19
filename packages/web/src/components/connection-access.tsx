@@ -22,6 +22,8 @@ type Props = {
 	onMakeDefault?: (actionId: string, allowed: boolean) => Promise<void>;
 	// The actions the connection's sign-in didn't cover: off and disabled until it is signed in again.
 	unavailable?: string[];
+	// The connection has no sign-in at all yet, so none of its actions is covered.
+	signInNeeded?: boolean;
 };
 
 // A connection's access, the way an editor shows its settings: one checkbox per action, the only
@@ -41,6 +43,7 @@ export function ConnectionAccess({
 	onChange,
 	onMakeDefault,
 	unavailable = [],
+	signInNeeded = false,
 }: Props) {
 	// A connection's actions show on more than one page section, so the ids need their own prefix.
 	const idPrefix = useId();
@@ -208,7 +211,10 @@ export function ConnectionAccess({
 					<span id={descriptionId} className="text-muted-foreground">
 						{action.description}
 						{blocked && required && ` · Off while ${required.label} is off`}
-						{isUnavailable(action.id) && ' · Not allowed at sign-in. Sign in again to allow it.'}
+						{isUnavailable(action.id) &&
+							(signInNeeded
+								? ' · Sign in to allow it.'
+								: ' · Not allowed at sign-in. Sign in again to allow it.')}
 					</span>
 				</div>
 				<span className="flex shrink-0 items-center gap-2 text-muted-foreground">
@@ -315,9 +321,29 @@ function groupsOf(actions: Action[]): Group[] {
 	return groups;
 }
 
-// Under a connection's permissions when its sign-in didn't cover some actions. Signing in again
-// gives the same connection new tokens, its defaults and every agent's settings kept.
-export function SignInAgain({href, className}: {href: string; className?: string}) {
+// Under a connection's permissions when its sign-in didn't cover some actions, or it has none yet,
+// as one moved over from a custom MCP server may not. Signing in gives the same connection new
+// tokens, its defaults and every agent's settings kept.
+export function SignInAgain({
+	href,
+	needed = false,
+	className,
+}: {
+	href: string;
+	needed?: boolean;
+	className?: string;
+}) {
+	if (needed) {
+		return (
+			<p className={cn('text-sm text-muted-foreground', className)}>
+				This connection isn't signed in yet, so agents can't use it.{' '}
+				<a href={href} className="text-foreground underline underline-offset-4">
+					Sign in
+				</a>{' '}
+				to start.
+			</p>
+		);
+	}
 	return (
 		<p className={cn('text-sm text-muted-foreground', className)}>
 			Some actions weren't allowed when this account was signed in.{' '}

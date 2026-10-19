@@ -30,6 +30,7 @@ const connection: Connection = {
 	tools: null,
 	name: null,
 	unavailable: [],
+	signInNeeded: false,
 };
 
 const entry: AuditEntry = {

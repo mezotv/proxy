@@ -20,11 +20,13 @@ import {handleGoogleCallbackRoute, handleGoogleStartRoute, handleSignInMethodsRo
 import {handleSignOutRoute} from '../auth/signout';
 import {handleConnectCustomMcpRoute, handleCustomMcpCallbackRoute, handleRefreshCustomMcpToolsRoute} from '../connections/custom/route';
 import {handleConnectEmailRoute, handleTestEmailRoute} from '../connections/email/route';
+import {handleExaCallbackRoute, handleStartExaRoute} from '../connections/exa/route';
 import {handleGoogleCallbackRoute as handleConnectGoogleCallbackRoute, handleStartGoogleRoute} from '../connections/google/route';
 import {handleGranolaCallbackRoute, handleStartGranolaRoute} from '../connections/granola/route';
 import {handleLinearCallbackRoute, handleStartLinearRoute} from '../connections/linear/route';
 import {handleConnectMysqlRoute, handleTestMysqlRoute} from '../connections/mysql/route';
 import {handleNotionCallbackRoute, handleStartNotionRoute} from '../connections/notion/route';
+import {handleParallelCallbackRoute, handleStartParallelRoute} from '../connections/parallel/route';
 import {handleConnectPlaidRoute, handleCreatePlaidLinkTokenRoute} from '../connections/plaid/route';
 import {handleConnectPostgresRoute, handleTestPostgresRoute} from '../connections/postgres/route';
 import {handleDeleteConnectionRoute, handleGetConnectionRoute, handleListConnectionsRoute, handleRenameConnectionRoute, handleSetConnectionDefaultsRoute} from '../connections/route';
@@ -75,6 +77,10 @@ export function createApiRouter(): express.Router {
 	router.get('/api/connections/notion/callback', withAuth('Notion sign-in callback route', handleNotionCallbackRoute));
 	router.get('/api/connections/linear/start', withAuth('Start Linear sign-in route', handleStartLinearRoute));
 	router.get('/api/connections/linear/callback', withAuth('Linear sign-in callback route', handleLinearCallbackRoute));
+	router.get('/api/connections/exa/start', withAuth('Start Exa sign-in route', handleStartExaRoute));
+	router.get('/api/connections/exa/callback', withAuth('Exa sign-in callback route', handleExaCallbackRoute));
+	router.get('/api/connections/parallel/start', withAuth('Start Parallel sign-in route', handleStartParallelRoute));
+	router.get('/api/connections/parallel/callback', withAuth('Parallel sign-in callback route', handleParallelCallbackRoute));
 	router.post('/api/connections/plaid', withAuthResult('Connect Plaid route', handleConnectPlaidRoute));
 	router.post('/api/connections/plaid/link-token', withAuthResult('Create Plaid Link token route', handleCreatePlaidLinkTokenRoute));
 	router.post('/api/connections/postgres', withAuthResult('Connect Postgres route', handleConnectPostgresRoute));

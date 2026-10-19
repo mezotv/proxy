@@ -5,7 +5,7 @@ import {Err, type Result} from 'ts-results-es';
 import {z} from 'zod';
 
 import {ApiErr, type ApiError, Do, parseCookieHeader, requirePresent} from '@proxy/utils';
-import {createConnection, findAccountConnection, renewConnection, updateConnectionName, updateConnectionTools, type ConnectionRow} from '@proxy/db/connection';
+import {createConnection, findAccountConnection, getConnection, renewConnection, updateConnectionName, updateConnectionTools, type ConnectionRow} from '@proxy/db/connection';
 import type {IntegrationId, McpTool} from '@proxy/integrations';
 
 import {queryParam, timingSafeEqualString, useSecureCookies} from '../auth/session';
@@ -25,7 +25,8 @@ import {requireUserOrgId} from '../utils/user-org';
  * answer of the route that found it, as a custom server's connect route (`signInFlow`). The
  * callback checks the provider's answer against the cookie, trades the code for tokens and makes
  * the connection, or gives an existing one of the same account its new tokens, which is how
- * signing in again works, and ends on the connection's page, or back on the catalog with
+ * signing in again works, or the one it was begun from (`?connection=`), as a connection's page
+ * begins it, whatever account it is for now, and ends on the connection's page, or back on the catalog with
  * `?error=<integration>` (with `?error=<integration>-unconfigured` when the server lacks what the
  * sign-in needs, such as Google's client); a sign-in begun from the welcome flow (`returnTo: 'welcome'`) ends on its
  * page for the connection, or its catalog, instead. What the provider's sign-in page is and how a
@@ -68,18 +69,41 @@ function makePkce(): {verifier: string; challenge: string} {
 	return {verifier, challenge: createHash('sha256').update(verifier).digest('base64url')};
 }
 
+// The connection a sign-in was begun from, while it is still the organization's and the
+// integration's; else the one of the same account, if there is one.
+function connectionToRenew(
+	orgId: string,
+	integrationId: IntegrationId,
+	connected: {account: string; providerAccountId: string | null},
+	connectionId: string | null,
+): Promise<Result<ConnectionRow | null, ApiError>> {
+	return Do(async ($) => {
+		const begunFrom = connectionId === null ? null : $(await getConnection(orgId, connectionId));
+		if (begunFrom?.integrationId === integrationId) {
+			return begunFrom;
+		}
+		return $(await findAccountConnection({orgId, integrationId, ...connected}));
+	});
+}
+
 /**
- * Saves a connection: a new one, or an existing one of the same account given the new credential
- * and the account as the provider names it now, such as an address changed since, and the tools
- * and the name, where it has its own; `added` unless it was already there.
+ * Saves a connection: a new one, or an existing one, the one the sign-in was begun from or else
+ * one of the same account, given the new credential and the account as the provider names it now,
+ * such as an address changed since, and the tools and the name, where it has its own; `added`
+ * unless it was already there.
  */
-export function saveConnection<C>(orgId: string, integrationId: IntegrationId, connected: Connected<C>): Promise<Result<{row: ConnectionRow; added: boolean}, ApiError>> {
+export function saveConnection<C>(
+	orgId: string,
+	integrationId: IntegrationId,
+	connected: Connected<C>,
+	connectionId: string | null = null,
+): Promise<Result<{row: ConnectionRow; added: boolean}, ApiError>> {
 	return Do(async ($) => {
 		const {account, tools} = connected;
 		const encrypted = $(encryptSecret(JSON.stringify(connected.credential)));
 		const providerAccountId = connected.accountId ?? null;
 		const name = connected.name === undefined ? {} : {name: connected.name};
-		const existing = $(await findAccountConnection({orgId, integrationId, account, providerAccountId}));
+		const existing = $(await connectionToRenew(orgId, integrationId, {account, providerAccountId}, connectionId));
 		if (!existing) {
 			const listed = tools === undefined ? {} : {tools: JSON.stringify(tools)};
 			return {row: $(await createConnection({orgId, integrationId, account, providerAccountId, credential: encrypted, defaults: connected.defaults, ...listed, ...name})), added: true};
@@ -125,9 +149,9 @@ export function signInFlow<E, C>(args: SignInArgs<E, C>) {
 	const stateCookieName = `proxy.${integrationId}-state`;
 	// Only sent to these routes.
 	const basePath = `/api/connections/${integrationId}`;
-	const statePayloadSchema = z.object({state: z.string(), verifier: z.string(), userId: z.string(), returnTo: returnToSchema.optional(), kept: args.keptSchema});
+	const statePayloadSchema = z.object({state: z.string(), verifier: z.string(), userId: z.string(), returnTo: returnToSchema.optional(), connectionId: z.string().optional(), kept: args.keptSchema});
 
-	type StatePayload = {state: string; verifier: string; userId: string; returnTo?: ReturnTo; kept: E};
+	type StatePayload = {state: string; verifier: string; userId: string; returnTo?: ReturnTo; connectionId?: string; kept: E};
 
 	function redirectUri(appUrl: string): string {
 		return `${appUrl}${basePath}/callback`;
@@ -151,13 +175,23 @@ export function signInFlow<E, C>(args: SignInArgs<E, C>) {
 	}
 
 	/** Keeps the handshake, and what `start` keeps beside it, in a cookie on `res`, and answers the provider's sign-in page, for the browser to go to. */
-	function beginSignIn(res: Response, begin: {userId: string; returnTo: ReturnTo | undefined; account: string | null; start: SignInStart<E>}): Promise<Result<string, ApiError>> {
+	function beginSignIn(
+		res: Response,
+		begin: {userId: string; returnTo: ReturnTo | undefined; account: string | null; connectionId?: string | null; start: SignInStart<E>},
+	): Promise<Result<string, ApiError>> {
 		return Do(async ($) => {
 			const appUrl = $(requirePresent(env.APP_URL, ApiErr.internalError(new Error('APP_URL is not configured'))));
 			const state = randomBytes(16).toString('hex');
 			const {verifier, challenge} = makePkce();
 			const {url, kept} = $(await begin.start({redirectUri: redirectUri(appUrl), state, challenge, account: begin.account}));
-			const payload: StatePayload = {state, verifier, userId: begin.userId, ...(begin.returnTo ? {returnTo: begin.returnTo} : {}), kept};
+			const payload: StatePayload = {
+				state,
+				verifier,
+				userId: begin.userId,
+				...(begin.returnTo ? {returnTo: begin.returnTo} : {}),
+				...(begin.connectionId ? {connectionId: begin.connectionId} : {}),
+				kept,
+			};
 			const cookie = $(encryptSecret(JSON.stringify(payload)));
 			res.cookie(stateCookieName, cookie, {...stateCookieOptions(), maxAge: stateCookieMaxAgeMs});
 			return url;
@@ -180,7 +214,7 @@ export function signInFlow<E, C>(args: SignInArgs<E, C>) {
 
 			const connected = $(await args.finish({redirectUri: redirectUri(appUrl), code, verifier: payload.verifier, kept: payload.kept}));
 			const orgId = $(await requireUserOrgId(request));
-			const {row, added} = $(await saveConnection(orgId, integrationId, connected));
+			const {row, added} = $(await saveConnection(orgId, integrationId, connected, payload.connectionId ?? null));
 			return {id: row.id, added};
 		});
 	}
@@ -242,7 +276,7 @@ export function signInRoutes<E, C>(
 			return;
 		}
 
-		const begun = await flow.beginSignIn(res, {userId: request.user.userId, returnTo, account: queryParam(request, 'account'), start: args.start});
+		const begun = await flow.beginSignIn(res, {userId: request.user.userId, returnTo, account: queryParam(request, 'account'), connectionId: queryParam(request, 'connection'), start: args.start});
 		if (begun.isErr()) {
 			flow.redirectToConnectError(res, appUrl, returnTo, begun.error);
 			return;

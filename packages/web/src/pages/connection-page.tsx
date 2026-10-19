@@ -52,7 +52,10 @@ export function ConnectionPage() {
 	const withAccess = agentsWithAccess(agents, connection);
 	const signInAgain =
 		connection.unavailable.length > 0
-			? signInPath(connection.integrationId, {account: connection.account})
+			? signInPath(connection.integrationId, {
+					account: connection.account,
+					connection: connection.id,
+				})
 			: null;
 
 	return (
@@ -128,6 +131,7 @@ export function ConnectionPage() {
 						actions={integration.actions}
 						defaults={defaultActions(connection)}
 						unavailable={connection.unavailable}
+						signInNeeded={connection.signInNeeded}
 						differing={differingAgents(agents, connection.id)}
 						onChange={async (actions) => {
 							const result = await setConnectionDefaults(connection.id, defaultsOnOrOff(actions));
@@ -135,7 +139,9 @@ export function ConnectionPage() {
 							await revalidator.revalidate();
 						}}
 					/>
-					{signInAgain && <SignInAgain href={signInAgain} className="md:px-3" />}
+					{signInAgain && (
+						<SignInAgain href={signInAgain} needed={connection.signInNeeded} className="md:px-3" />
+					)}
 					{connection.integrationId === 'plaid' && (
 						<SignInToBankAgain connectionId={connection.id} className="md:px-3" />
 					)}

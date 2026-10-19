@@ -17,6 +17,7 @@ const google: Connection = {
 	tools: null,
 	name: null,
 	unavailable: [],
+	signInNeeded: false,
 };
 
 afterEach(() => {

@@ -40,7 +40,8 @@ const renewing = new Map<string, Promise<Result<string, ApiError>>>();
 
 function readSession<C>(refresher: TokenRefresher<C>, stored: string | null): Result<Session<C>, ApiError> {
 	return Do<Session<C>, ApiError>(($) => {
-		const present = $(requirePresent(stored, ApiErr.internalError(new Error(`${refresher.name} connection without a credential`))));
+		// One moved over from a custom MCP server without a sign-in has none until it is signed in to.
+		const present = $(requirePresent(stored, ApiErr.credentialsRejected()));
 		return {stored: present, credential: $(readStoredJson(present, refresher.schema))};
 	});
 }

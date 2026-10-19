@@ -264,3 +264,95 @@ export async function setConnectionDefaults(data: {
 		]);
 	});
 }
+
+/** A custom MCP connection with everything moving it to a built-in integration rewrites. */
+export type CustomMcpConnectionRow = {
+	id: string;
+	account: string;
+	credential: string | null;
+	tools: string | null;
+	defaults: Array<{actionId: string}>;
+	agentGrants: Array<{agentId: string; actionId: string; allowed: boolean}>;
+};
+
+/** Every organization's custom MCP connections, for moving those an integration built in since takes over. */
+export async function listCustomMcpConnections(): Promise<
+	Result<CustomMcpConnectionRow[], ApiError>
+> {
+	return wrapDb(() =>
+		db.connection.findMany({
+			where: {integrationId: 'mcp'},
+			select: {
+				id: true,
+				account: true,
+				credential: true,
+				tools: true,
+				defaults: {select: {actionId: true}},
+				agentGrants: {select: {agentId: true, actionId: true, allowed: true}},
+			},
+		}),
+	);
+}
+
+/** One of a custom connection's tool runs in the activity log, as the built-in integration logs it. */
+export type MovedRun = {
+	id: string;
+	collectionId: string;
+	action: string;
+	recordTitle: string | null;
+	query: string | null;
+};
+
+/**
+ * Moves a custom MCP connection to a built-in integration, all at once: the connection, with no
+ * tools of its own and the credential given, null where it has to be signed in to; its defaults and
+ * every agent's settings, replaced; and its tool runs in the activity log, rewritten. Only while it
+ * is still a custom connection, so two servers starting at once move it once: `Ok(false)` when
+ * another did.
+ */
+export async function takeOverConnection(data: {
+	connectionId: string;
+	integrationId: string;
+	account: string;
+	credential: string | null;
+	defaults: string[];
+	grants: Array<{agentId: string; actionId: string; allowed: boolean}>;
+	runs: MovedRun[];
+}): Promise<Result<boolean, ApiError>> {
+	const {connectionId, integrationId, account, credential, defaults, grants, runs} = data;
+	return wrapDb(() =>
+		db.$transaction(
+			async (tx) => {
+				const claimed = await tx.connection.updateMany({
+					where: {id: connectionId, integrationId: 'mcp'},
+					data: {integrationId, account, credential, tools: null},
+				});
+				if (claimed.count === 0) {
+					return false;
+				}
+				await tx.connectionDefault.deleteMany({where: {connectionId}});
+				await tx.connectionDefault.createMany({
+					data: defaults.map((actionId) => ({connectionId, actionId})),
+				});
+				await tx.agentGrant.deleteMany({where: {connectionId}});
+				await tx.agentGrant.createMany({data: grants.map((grant) => ({...grant, connectionId}))});
+				if (runs.length > 0) {
+					await tx.$executeRaw`
+						UPDATE "AuditEntry" AS e
+						SET "collectionId" = r."collectionId", "action" = r."action", "recordTitle" = r."recordTitle", "query" = r."query"
+						FROM unnest(
+							${runs.map((run) => run.id)}::text[],
+							${runs.map((run) => run.collectionId)}::text[],
+							${runs.map((run) => run.action)}::text[],
+							${runs.map((run) => run.recordTitle)}::text[],
+							${runs.map((run) => run.query)}::text[]
+						) AS r("id", "collectionId", "action", "recordTitle", "query")
+						WHERE e."id" = r."id"`;
+				}
+				return true;
+			},
+			// A connection's whole activity log is rewritten in it.
+			{timeout: 60_000},
+		),
+	);
+}
