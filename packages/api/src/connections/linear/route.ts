@@ -1,5 +1,4 @@
 import {textParam, type BuiltInMcp} from '../mcp/built-in';
-import {mcpConnectRoutes} from '../mcp/mcp-connect';
 import {getLinearAccount, LINEAR} from './linear-mcp';
 
 /**
@@ -24,5 +23,3 @@ export const LINEAR_MCP: BuiltInMcp = {
 		},
 	},
 };
-
-export const {handleStart: handleStartLinearRoute, handleCallback: handleLinearCallbackRoute} = mcpConnectRoutes(LINEAR_MCP);

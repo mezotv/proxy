@@ -52,6 +52,13 @@ spyOn(globalThis, 'fetch').mockImplementation((async (input: string | URL | Requ
 	return Response.json({access_token: 'access-1', token_type: 'bearer'});
 }) as typeof fetch);
 
+// The sign-in routes the api makes of Exa's declaration.
+async function routes() {
+	const {mcpConnectRoutes} = await import('../mcp/mcp-connect');
+	const {EXA_MCP} = await import('./route');
+	return mcpConnectRoutes(EXA_MCP);
+}
+
 function makeRes() {
 	const cookies: Array<{name: string; value: string; options: Record<string, unknown>}> = [];
 	const res = {
@@ -70,7 +77,7 @@ function makeRes() {
 const user = {userId: 'user-1', email: 'alex@example.com'};
 
 async function start() {
-	const {handleStartExaRoute} = await import('./route');
+	const {handleStart: handleStartExaRoute} = await routes();
 	const res = makeRes();
 	await handleStartExaRoute({user, query: {}, headers: {}} as never, res as never);
 	const cookie = res.cookies.find((candidate) => candidate.name === 'proxy.exa-state');
@@ -79,7 +86,7 @@ async function start() {
 }
 
 async function callback(args: {cookie: string; query: Record<string, string>}) {
-	const {handleExaCallbackRoute} = await import('./route');
+	const {handleCallback: handleExaCallbackRoute} = await routes();
 	const res = makeRes();
 	await handleExaCallbackRoute({user, query: args.query, headers: {cookie: `proxy.exa-state=${args.cookie}`}} as never, res as never);
 	return res;

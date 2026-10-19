@@ -66,6 +66,13 @@ spyOn(globalThis, 'fetch').mockImplementation((async (input: string | URL | Requ
 	return toolAnswer({id: 'user-1', name: 'Alex Kim', email: 'Alex@Example.com', displayName: 'alex'});
 }) as typeof fetch);
 
+// The sign-in routes the api makes of Linear's declaration.
+async function routes() {
+	const {mcpConnectRoutes} = await import('../mcp/mcp-connect');
+	const {LINEAR_MCP} = await import('./route');
+	return mcpConnectRoutes(LINEAR_MCP);
+}
+
 function makeRes() {
 	const cookies: Array<{name: string; value: string; options: Record<string, unknown>}> = [];
 	const res = {
@@ -84,7 +91,7 @@ function makeRes() {
 const user = {userId: 'user-1', email: 'alex@example.com'};
 
 async function start(query: Record<string, string> = {}) {
-	const {handleStartLinearRoute} = await import('./route');
+	const {handleStart: handleStartLinearRoute} = await routes();
 	const res = makeRes();
 	await handleStartLinearRoute({user, query, headers: {}} as never, res as never);
 	const cookie = res.cookies.find((candidate) => candidate.name === 'proxy.linear-state');
@@ -93,7 +100,7 @@ async function start(query: Record<string, string> = {}) {
 }
 
 async function callback(args: {cookie: string; query: Record<string, string>}) {
-	const {handleLinearCallbackRoute} = await import('./route');
+	const {handleCallback: handleLinearCallbackRoute} = await routes();
 	const res = makeRes();
 	await handleLinearCallbackRoute({user, query: args.query, headers: {cookie: `proxy.linear-state=${args.cookie}`}} as never, res as never);
 	return res;

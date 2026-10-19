@@ -129,6 +129,9 @@ export type Integration = {
 	custom?: true;
 	// The tools of the connection a custom integration was built for, each a tool of its own.
 	mcpTools?: McpTool[];
+	// Connected by signing in to the provider, the sign-in starting at
+	// `/api/connections/<id>/start`: Google, and every integration built on its MCP server.
+	signIn?: true;
 	// The experiment an organization needs on to connect it: the catalog, the api's routes and the
 	// MCP server's instructions all leave it out without. Connections already made keep working.
 	experiment?: Experiment;

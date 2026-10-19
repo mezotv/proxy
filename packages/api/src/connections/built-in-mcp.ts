@@ -6,9 +6,10 @@ import {NOTION_MCP} from './notion/route';
 import {PARALLEL_MCP} from './parallel/route';
 
 /**
- * Every integration built on its provider's MCP server (`mcp/built-in.ts`). Adding one here is all
- * it takes for the custom MCP form to refuse its server, and for custom connections to it to be
- * moved over when the api starts.
+ * Every integration built on its provider's MCP server (`mcp/built-in.ts`). Adding one here gives
+ * it its sign-in routes (`create-api-router.ts`), has the custom MCP form sign in to it when given
+ * its server's address, and moves custom connections to its server over when the api starts. Its
+ * catalog entry says it is signed in to (`signIn`), for the web app.
  */
 export const BUILT_IN_MCP: BuiltInMcp[] = [GRANOLA_MCP, NOTION_MCP, LINEAR_MCP, EXA_MCP, PARALLEL_MCP];
 

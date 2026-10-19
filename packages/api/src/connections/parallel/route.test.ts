@@ -52,6 +52,13 @@ spyOn(globalThis, 'fetch').mockImplementation((async (input: string | URL | Requ
 	return Response.json({access_token: 'key-1', token_type: 'bearer'});
 }) as typeof fetch);
 
+// The sign-in routes the api makes of Parallel's declaration.
+async function routes() {
+	const {mcpConnectRoutes} = await import('../mcp/mcp-connect');
+	const {PARALLEL_MCP} = await import('./route');
+	return mcpConnectRoutes(PARALLEL_MCP);
+}
+
 function makeRes() {
 	const cookies: Array<{name: string; value: string; options: Record<string, unknown>}> = [];
 	const res = {
@@ -70,7 +77,7 @@ function makeRes() {
 const user = {userId: 'user-1', email: 'alex@example.com'};
 
 async function start() {
-	const {handleStartParallelRoute} = await import('./route');
+	const {handleStart: handleStartParallelRoute} = await routes();
 	const res = makeRes();
 	await handleStartParallelRoute({user, query: {}, headers: {}} as never, res as never);
 	const cookie = res.cookies.find((candidate) => candidate.name === 'proxy.parallel-state');
@@ -79,7 +86,7 @@ async function start() {
 }
 
 async function callback(args: {cookie: string; query: Record<string, string>}) {
-	const {handleParallelCallbackRoute} = await import('./route');
+	const {handleCallback: handleParallelCallbackRoute} = await routes();
 	const res = makeRes();
 	await handleParallelCallbackRoute({user, query: args.query, headers: {cookie: `proxy.parallel-state=${args.cookie}`}} as never, res as never);
 	return res;

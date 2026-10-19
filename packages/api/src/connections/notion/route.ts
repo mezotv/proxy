@@ -1,5 +1,4 @@
 import {textParam, type BuiltInMcp} from '../mcp/built-in';
-import {mcpConnectRoutes} from '../mcp/mcp-connect';
 import {getNotionAccount, NOTION} from './notion-mcp';
 
 /**
@@ -18,5 +17,3 @@ export const NOTION_MCP: BuiltInMcp = {
 		'notion-update-page': {actions: ['edit'], run: () => ({collectionId: 'pages', operation: 'update'})},
 	},
 };
-
-export const {handleStart: handleStartNotionRoute, handleCallback: handleNotionCallbackRoute} = mcpConnectRoutes(NOTION_MCP);

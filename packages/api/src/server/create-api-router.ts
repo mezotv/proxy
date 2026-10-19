@@ -18,15 +18,12 @@ import {handleDevLoginRoute} from '../auth/dev-login';
 import {handleEmailSignInRoute, handleEmailVerifyRoute} from '../auth/email';
 import {handleGoogleCallbackRoute, handleGoogleStartRoute, handleSignInMethodsRoute} from '../auth/google';
 import {handleSignOutRoute} from '../auth/signout';
+import {BUILT_IN_MCP} from '../connections/built-in-mcp';
 import {handleConnectCustomMcpRoute, handleCustomMcpCallbackRoute, handleRefreshCustomMcpToolsRoute} from '../connections/custom/route';
 import {handleConnectEmailRoute, handleTestEmailRoute} from '../connections/email/route';
-import {handleExaCallbackRoute, handleStartExaRoute} from '../connections/exa/route';
 import {handleGoogleCallbackRoute as handleConnectGoogleCallbackRoute, handleStartGoogleRoute} from '../connections/google/route';
-import {handleGranolaCallbackRoute, handleStartGranolaRoute} from '../connections/granola/route';
-import {handleLinearCallbackRoute, handleStartLinearRoute} from '../connections/linear/route';
+import {mcpConnectRoutes} from '../connections/mcp/mcp-connect';
 import {handleConnectMysqlRoute, handleTestMysqlRoute} from '../connections/mysql/route';
-import {handleNotionCallbackRoute, handleStartNotionRoute} from '../connections/notion/route';
-import {handleParallelCallbackRoute, handleStartParallelRoute} from '../connections/parallel/route';
 import {handleConnectPlaidRoute, handleCreatePlaidLinkTokenRoute} from '../connections/plaid/route';
 import {handleConnectPostgresRoute, handleTestPostgresRoute} from '../connections/postgres/route';
 import {handleDeleteConnectionRoute, handleGetConnectionRoute, handleListConnectionsRoute, handleRenameConnectionRoute, handleSetConnectionDefaultsRoute} from '../connections/route';
@@ -71,16 +68,13 @@ export function createApiRouter(): express.Router {
 	router.post('/api/connections/email/test', withAuthResult('Test email route', handleTestEmailRoute));
 	router.get('/api/connections/google/start', withAuth('Start Google sign-in route', handleStartGoogleRoute));
 	router.get('/api/connections/google/callback', withAuth('Google sign-in callback route', handleConnectGoogleCallbackRoute));
-	router.get('/api/connections/granola/start', withAuth('Start Granola sign-in route', handleStartGranolaRoute));
-	router.get('/api/connections/granola/callback', withAuth('Granola sign-in callback route', handleGranolaCallbackRoute));
-	router.get('/api/connections/notion/start', withAuth('Start Notion sign-in route', handleStartNotionRoute));
-	router.get('/api/connections/notion/callback', withAuth('Notion sign-in callback route', handleNotionCallbackRoute));
-	router.get('/api/connections/linear/start', withAuth('Start Linear sign-in route', handleStartLinearRoute));
-	router.get('/api/connections/linear/callback', withAuth('Linear sign-in callback route', handleLinearCallbackRoute));
-	router.get('/api/connections/exa/start', withAuth('Start Exa sign-in route', handleStartExaRoute));
-	router.get('/api/connections/exa/callback', withAuth('Exa sign-in callback route', handleExaCallbackRoute));
-	router.get('/api/connections/parallel/start', withAuth('Start Parallel sign-in route', handleStartParallelRoute));
-	router.get('/api/connections/parallel/callback', withAuth('Parallel sign-in callback route', handleParallelCallbackRoute));
+	// Every integration built on its MCP server signs in the same way, from its declaration.
+	for (const builtIn of BUILT_IN_MCP) {
+		const {handleStart, handleCallback} = mcpConnectRoutes(builtIn);
+		const {integrationId, server} = builtIn;
+		router.get(`/api/connections/${integrationId}/start`, withAuth(`Start ${server.name} sign-in route`, handleStart));
+		router.get(`/api/connections/${integrationId}/callback`, withAuth(`${server.name} sign-in callback route`, handleCallback));
+	}
 	router.post('/api/connections/plaid', withAuthResult('Connect Plaid route', handleConnectPlaidRoute));
 	router.post('/api/connections/plaid/link-token', withAuthResult('Create Plaid Link token route', handleCreatePlaidLinkTokenRoute));
 	router.post('/api/connections/postgres', withAuthResult('Connect Postgres route', handleConnectPostgresRoute));

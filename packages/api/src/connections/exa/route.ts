@@ -1,7 +1,6 @@
 import {Ok} from 'ts-results-es';
 
 import {firstParam, textParam, type BuiltInMcp} from '../mcp/built-in';
-import {mcpConnectRoutes} from '../mcp/mcp-connect';
 import {EXA} from './exa-mcp';
 
 /**
@@ -20,5 +19,3 @@ export const EXA_MCP: BuiltInMcp = {
 		web_fetch_exa: {actions: ['fetch'], run: (params) => ({collectionId: 'pages', operation: 'read', title: firstParam(params, 'urls')})},
 	},
 };
-
-export const {handleStart: handleStartExaRoute, handleCallback: handleExaCallbackRoute} = mcpConnectRoutes(EXA_MCP);

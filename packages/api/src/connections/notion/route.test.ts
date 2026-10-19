@@ -56,6 +56,13 @@ spyOn(globalThis, 'fetch').mockImplementation((async (input: string | URL | Requ
 	return Response.json({jsonrpc: '2.0', id: 1, result: {content: [{type: 'text', text: JSON.stringify(users)}]}});
 }) as typeof fetch);
 
+// The sign-in routes the api makes of Notion's declaration.
+async function routes() {
+	const {mcpConnectRoutes} = await import('../mcp/mcp-connect');
+	const {NOTION_MCP} = await import('./route');
+	return mcpConnectRoutes(NOTION_MCP);
+}
+
 function makeRes() {
 	const cookies: Array<{name: string; value: string; options: Record<string, unknown>}> = [];
 	const res = {
@@ -74,7 +81,7 @@ function makeRes() {
 const user = {userId: 'user-1', email: 'alex@example.com'};
 
 async function start() {
-	const {handleStartNotionRoute} = await import('./route');
+	const {handleStart: handleStartNotionRoute} = await routes();
 	const res = makeRes();
 	await handleStartNotionRoute({user, query: {}, headers: {}} as never, res as never);
 	const cookie = res.cookies.find((candidate) => candidate.name === 'proxy.notion-state');
@@ -83,7 +90,7 @@ async function start() {
 }
 
 async function callback(args: {cookie: string; query: Record<string, string>}) {
-	const {handleNotionCallbackRoute} = await import('./route');
+	const {handleCallback: handleNotionCallbackRoute} = await routes();
 	const res = makeRes();
 	await handleNotionCallbackRoute({user, query: args.query, headers: {cookie: `proxy.notion-state=${args.cookie}`}} as never, res as never);
 	return res;

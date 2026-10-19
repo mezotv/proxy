@@ -1,7 +1,6 @@
 import {Ok} from 'ts-results-es';
 
 import {firstParam, textParam, type BuiltInMcp} from '../mcp/built-in';
-import {mcpConnectRoutes} from '../mcp/mcp-connect';
 import {PARALLEL} from './parallel-mcp';
 
 /**
@@ -24,5 +23,3 @@ export const PARALLEL_MCP: BuiltInMcp = {
 		web_fetch: {actions: ['fetch'], run: (params) => ({collectionId: 'pages', operation: 'read', title: firstParam(params, 'urls')})},
 	},
 };
-
-export const {handleStart: handleStartParallelRoute, handleCallback: handleParallelCallbackRoute} = mcpConnectRoutes(PARALLEL_MCP);

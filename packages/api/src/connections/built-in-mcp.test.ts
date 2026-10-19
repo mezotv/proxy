@@ -1,6 +1,6 @@
 import {describe, expect, mock, test} from 'bun:test';
 
-import {findCollection, findIntegration, requiredAction} from '@proxy/integrations';
+import {findCollection, findIntegration, INTEGRATIONS, requiredAction} from '@proxy/integrations';
 
 mock.module('../utils/env', () => ({env: {NODE_ENV: 'production', APP_URL: 'https://app.example.com'}}));
 
@@ -34,6 +34,11 @@ describe('BUILT_IN_MCP', () => {
 				expect(tool.actions, `${builtIn.integrationId} ${name}`).toContain(collection ? (requiredAction(collection, run.operation) ?? '') : '');
 			}
 		}
+	});
+
+	test('the catalog marks exactly Google and the integrations built on their MCP servers as signed in to, for the web app', () => {
+		const signedIn: string[] = INTEGRATIONS.filter((integration) => integration.signIn).map((integration) => integration.id);
+		expect(signedIn.toSorted()).toEqual(['google', ...BUILT_IN_MCP.map((builtIn) => builtIn.integrationId)].toSorted());
 	});
 
 	test('no two integrations take over the same host', () => {

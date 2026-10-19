@@ -237,6 +237,7 @@ const email: Integration = {
 // There is no search.
 const granola: Integration = {
 	id: 'granola',
+	signIn: true,
 	name: 'Granola',
 	description: 'Meeting notes and transcripts',
 	actions: [
@@ -300,6 +301,7 @@ const granola: Integration = {
 // shared with. Pages aren't deleted.
 const notion: Integration = {
 	id: 'notion',
+	signIn: true,
 	name: 'Notion',
 	description: 'Pages and database rows in a workspace',
 	actions: [
@@ -382,6 +384,7 @@ export const LINEAR_PRIORITIES = ['No priority', 'Urgent', 'High', 'Medium', 'Lo
 // tool that archives or deletes an issue, so issues aren't deleted.
 const linear: Integration = {
 	id: 'linear',
+	signIn: true,
 	name: 'Linear',
 	description: 'Issues in a workspace',
 	actions: [
@@ -458,6 +461,7 @@ function webIntegration(id: 'exa' | 'parallel', name: string, description: strin
 		id,
 		name,
 		description,
+		signIn: true,
 		actions: [
 			{
 				id: 'search',
@@ -675,6 +679,7 @@ const FILE_KINDS = ['Folder', 'Document', 'Spreadsheet', 'Presentation', 'Sheet'
 // request goes to Google.
 const google: Integration = {
 	id: 'google',
+	signIn: true,
 	name: 'Google',
 	description: 'Gmail, Calendar, Drive, Docs, Sheets, Slides and Contacts for one Google account',
 	// Google's Limited Use policy asks for what happens with its data to be said where access is given.

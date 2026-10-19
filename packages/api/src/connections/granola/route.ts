@@ -1,5 +1,4 @@
 import type {BuiltInMcp} from '../mcp/built-in';
-import {mcpConnectRoutes} from '../mcp/mcp-connect';
 import {GRANOLA, getGranolaAccount} from './granola-mcp';
 
 /**
@@ -17,5 +16,3 @@ export const GRANOLA_MCP: BuiltInMcp = {
 		get_meeting_transcript: {actions: ['readTranscripts'], run: () => ({collectionId: 'transcripts', operation: 'view'})},
 	},
 };
-
-export const {handleStart: handleStartGranolaRoute, handleCallback: handleGranolaCallbackRoute} = mcpConnectRoutes(GRANOLA_MCP);
