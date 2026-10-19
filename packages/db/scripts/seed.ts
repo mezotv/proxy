@@ -16,7 +16,12 @@ import {
 
 import {db} from '../src';
 
-const DEMO_EMAIL = 'demo@proxy.local';
+// Whose workspace it is: the demo person's, or with SEED_EMAIL another's, such as the dev user's
+// (`dev@dev.proxy.local`), whom the login page signs in as in development.
+const DEMO_EMAIL = process.env.SEED_EMAIL || 'demo@proxy.local';
+const WORKSPACE_SLUG = `${DEMO_EMAIL.split('@')[0]}-workspace`;
+// Agent usernames are unique across workspaces, so another person's get their name on the end.
+const USERNAME_SUFFIX = DEMO_EMAIL === 'demo@proxy.local' ? '' : `-${DEMO_EMAIL.split('@')[0]}`;
 const ORG_NAME = "Demo's Workspace";
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1']);
 
@@ -73,6 +78,7 @@ if (existing) {
 	});
 	const orgIds = orgs.map((org) => org.id);
 	await db.auditEntry.deleteMany({where: {orgId: {in: orgIds}}});
+	await db.agentTask.deleteMany({where: {orgId: {in: orgIds}}});
 	await db.organization.deleteMany({where: {id: {in: orgIds}}});
 	await db.user.delete({where: {id: existing.id}});
 }
@@ -83,7 +89,7 @@ const user = await db.user.create({
 	data: {email: DEMO_EMAIL, name: 'Demo User', emailVerified: new Date(), createdAt: daysAgo(40)},
 });
 const org = await db.organization.create({
-	data: {name: ORG_NAME, slug: 'demo-workspace', onboardedAt: daysAgo(40), createdAt: daysAgo(40)},
+	data: {name: ORG_NAME, slug: WORKSPACE_SLUG, onboardedAt: daysAgo(40), createdAt: daysAgo(40)},
 });
 await db.orgMember.create({data: {orgId: org.id, userId: user.id}});
 
@@ -331,7 +337,7 @@ async function makeAgent(data: {
 			orgId: org.id,
 			providerId: data.providerId,
 			name: data.name,
-			username: data.username,
+			username: `${data.username}${USERNAME_SUFFIX}`,
 			passwordHash,
 			createdAt: daysAgo(data.daysAgo),
 			revokedAt: data.revokedDaysAgo === undefined ? null : daysAgo(data.revokedDaysAgo),
@@ -546,20 +552,81 @@ function isAllowed(agent: (typeof agents)[number], request: Request): boolean {
 	);
 }
 
+// What the agents set out to do: every request is made for a task, as the api logs them, a few
+// requests in a row to each.
+const TASKS: [{title: string; goal: string}, ...Array<{title: string; goal: string}>] = [
+	{
+		title: 'Triage this morning’s inbox',
+		goal: 'Go through the new emails, archive the newsletters and flag anything that needs an answer today.',
+	},
+	{
+		title: 'Prepare for the Acme call',
+		goal: 'Pull the notes from the last meeting with Acme and the open issues, and draft an agenda.',
+	},
+	{
+		title: 'Find the Visa card number',
+		goal: 'Look up the personal Visa card to pay the domain renewal.',
+	},
+	{
+		title: 'Plan the week',
+		goal: 'List this week’s events and the open issues assigned to me, and suggest what to do first.',
+	},
+	{
+		title: 'Reply to Sam about Q3 planning',
+		goal: 'Find Sam’s email about Q3 planning and draft a reply with the dates that work.',
+	},
+	{
+		title: 'Expense report',
+		goal: 'Collect the receipts emailed in October and list them with their amounts.',
+	},
+];
+
+const MINUTE = 60 * 1000;
+
 let entryCount = 0;
+let taskCount = 0;
 for (const agent of agents) {
 	const start = agent.createdAt.getTime();
 	const end = agent.revokedAt?.getTime() ?? now;
 	const count = agent.grants.length === 0 ? 12 : 25 + Math.floor(random() * 20);
 	let lastActiveAt = start;
 
-	for (let i = 0; i < count; i++) {
-		const request = randomRequest();
-		if (!request) {
-			continue;
-		}
+	// The requests in the order they were made, so a task is a run of them.
+	const requests = Array.from({length: count}, () => ({
+		request: randomRequest(),
+		createdAt: start + random() * (end - start),
+	}))
+		.flatMap(({request, createdAt}) => (request ? [{request, createdAt}] : []))
+		.sort((a, b) => a.createdAt - b.createdAt);
 
-		const createdAt = start + random() * (end - start);
+	let taskId: string | null = null;
+	let via: 'web' | 'mcp' = 'web';
+	let leftInTask = 0;
+	for (const [index, {request, createdAt}] of requests.entries()) {
+		if (leftInTask === 0 || taskId === null) {
+			leftInTask = 1 + Math.floor(random() * 4);
+			const lastIndex = Math.min(index + leftInTask, requests.length) - 1;
+			// The latest task of a login still in use is under way.
+			const underWay = agent.revokedAt === null && lastIndex === requests.length - 1;
+			// Most come in over MCP, as Claude or ChatGPT would; some through the agent pages.
+			via = random() < 0.7 ? 'mcp' : 'web';
+			const task = await db.agentTask.create({
+				data: {
+					orgId: org.id,
+					agentId: agent.id,
+					...pick(TASKS),
+					via,
+					createdAt: new Date(createdAt - MINUTE),
+					finishedAt: underWay
+						? null
+						: new Date((requests[lastIndex]?.createdAt ?? createdAt) + MINUTE),
+				},
+			});
+			taskId = task.id;
+			taskCount += 1;
+		}
+		leftInTask -= 1;
+
 		lastActiveAt = Math.max(lastActiveAt, createdAt);
 		const onOneRecord = request.action !== 'list' && request.action !== 'create';
 		const collectionId = request.collection.id;
@@ -576,6 +643,8 @@ for (const agent of agents) {
 				recordTitle: onOneRecord ? recordTitle(request.connection, collectionId) : null,
 				query: searched ? pick(SEARCHES) : null,
 				outcome: isAllowed(agent, request) ? 'allowed' : 'denied',
+				via,
+				taskId,
 				createdAt: new Date(createdAt),
 			},
 		});
@@ -601,7 +670,7 @@ const apiUrl = process.env.VITE_PROXY_API_URL ?? 'http://localhost:4000';
 const query = new URLSearchParams({token, email: DEMO_EMAIL, callbackUrl: '/agents'});
 
 console.log(
-	`[seed] ${connections.length} connections, ${agents.length} agents and ${entryCount} activity entries for ${DEMO_EMAIL}.`,
+	`[seed] ${connections.length} connections, ${agents.length} agents, ${taskCount} tasks and ${entryCount} activity entries for ${DEMO_EMAIL}.`,
 );
 console.log(`[seed] Sign in, once, within 24 hours: ${apiUrl}/auth/email/verify?${query}`);
 console.log(`[seed] Later, ask for a magic link for ${DEMO_EMAIL}; the api prints it.`);

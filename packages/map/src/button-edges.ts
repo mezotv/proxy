@@ -5,7 +5,11 @@
 export const BUTTON_EDGES: ReadonlyArray<{from: string; to: string; label: string}> = [
 	{from: '/login', to: '/connections', label: 'Sign in'},
 	{from: '/login', to: '/welcome/connections', label: 'Sign in, new organization'},
-	{from: '/agent/login', to: '/agent', label: 'Sign in'},
+	// Signing in lets go of any task, so the agent lands on starting one.
+	{from: '/agent/login', to: '/agent/task', label: 'Sign in'},
+	{from: '/agent/task', to: '/agent', label: 'Start task'},
+	// From every agent page, through the header; the home page stands for them.
+	{from: '/agent', to: '/agent/task', label: 'Finish task'},
 
 	{from: '/welcome/connections', to: '/welcome/connections/email', label: 'Add a mailbox'},
 	{from: '/welcome/connections', to: '/welcome/connections/postgres', label: 'Add PostgreSQL'},

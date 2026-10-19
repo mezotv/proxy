@@ -62,11 +62,13 @@ export async function connectionLoader({params}: {params: {id?: string}}) {
 		listAgents(),
 		listActivity({connectionId: id}),
 	]);
+	const {entries, tasks} = unwrapLoaderResult(activity);
 	return {
 		connection: unwrapOrNull(connection),
 		connections: unwrapLoaderResult(connections).connections,
 		agents: unwrapLoaderResult(agents).agents,
-		entries: unwrapLoaderResult(activity).entries,
+		entries,
+		tasks,
 	};
 }
 
@@ -106,12 +108,14 @@ export async function agentLoader({params}: {params: {id?: string}}) {
 		listActivity({agentId: id}),
 		listMcpClients(id),
 	]);
+	const {entries, tasks} = unwrapLoaderResult(activity);
 	return {
 		agent: unwrapOrNull(agent),
 		mcpClients: unwrapLoaderResult(mcpClients).clients,
 		connections: unwrapLoaderResult(connections).connections,
 		agents: unwrapLoaderResult(agents).agents,
-		entries: unwrapLoaderResult(activity).entries,
+		entries,
+		tasks,
 	};
 }
 
@@ -125,6 +129,7 @@ export async function activityLoader({request}: {request: Request}) {
 	const filter: ActivityFilter = {
 		agentId: params.get('agent') ?? undefined,
 		connectionId: params.get('connection') ?? undefined,
+		taskId: params.get('task') ?? undefined,
 		outcome: outcome === 'allowed' || outcome === 'denied' ? outcome : undefined,
 		// A day of the home page's graph, on the browser's clock as the graph counts it.
 		...daySpan(params.get('day') ?? ''),
@@ -134,8 +139,10 @@ export async function activityLoader({request}: {request: Request}) {
 		listConnections(),
 		listAgents(),
 	]);
+	const {entries, tasks} = unwrapLoaderResult(activity);
 	return {
-		entries: unwrapLoaderResult(activity).entries,
+		entries,
+		tasks,
 		connections: unwrapLoaderResult(connections).connections,
 		agents: unwrapLoaderResult(agents).agents,
 	};

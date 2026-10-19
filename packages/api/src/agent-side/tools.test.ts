@@ -12,6 +12,10 @@ const logAgentRequest = mock();
 
 mock.module('@proxy/db/audit', () => ({logAgentRequest}));
 
+const getAgentTask = mock();
+
+mock.module('@proxy/db/task', () => ({getAgentTask, createAgentTask: mock(), finishAgentTask: mock(), listOpenAgentTasks: mock()}));
+
 const listConnectionsWithCredential = mock();
 
 mock.module('@proxy/db/connection', () => ({listConnectionsWithCredential, updateConnectionCredential: mock(), getConnectionCredential: mock(async () => Ok(null))}));
@@ -39,7 +43,10 @@ function integration(id: string): Integration {
 }
 
 const signedIn = {agentId: 'agent-1', orgId: 'org-1', providerId: 'dot', name: 'Dots', experiments: []};
-const caller = {agent: signedIn, via: 'mcp' as const};
+const caller = {agent: signedIn, via: 'mcp' as const, taskId: 'task-1'};
+
+// The task every run here is for, under way.
+const task = {id: 'task-1', agentId: 'agent-1', title: 'Find the Visa', goal: 'Look up the card number', via: 'mcp', createdAt: new Date('2026-10-16T09:00:00Z'), finishedAt: null};
 
 const infoConnection = {id: 'info-1', integrationId: 'info', account: "Alex's Workspace", createdAt: new Date(), tools: null, name: null, defaults: [{actionId: 'readAddresses'}], credential: null};
 const emailConnection = {id: 'mail-1', integrationId: 'email', account: 'alex@example.com', createdAt: new Date(), tools: null, name: null, defaults: [{actionId: 'read'}], credential: 'v1.x.y.z'};
@@ -97,6 +104,7 @@ function useConnection(connection: typeof infoConnection | typeof emailConnectio
 beforeEach(() => {
 	mock.clearAllMocks();
 	getAgent.mockResolvedValue(Ok(agent));
+	getAgentTask.mockResolvedValue(Ok(task));
 	logAgentRequest.mockResolvedValue(Ok(undefined));
 	listConnectionsWithCredential.mockResolvedValue(Ok([infoConnection, emailConnection, googleConnection]));
 	connector.list.mockResolvedValue(Ok({records: [card], nextPage: null}));
@@ -186,7 +194,22 @@ describe('runAgentTool', () => {
 			query: null,
 			outcome: 'allowed',
 			via: 'mcp',
+			taskId: 'task-1',
 		});
+		expect(getAgentTask).toHaveBeenCalledWith('org-1', 'agent-1', 'task-1');
+	});
+
+	test('a run for a task the agent does not have, or one finished already, is refused unlogged', async () => {
+		const {runAgentTool} = await import('./tools');
+		getAgentTask.mockResolvedValue(Ok(null));
+		const unknown = await runAgentTool(caller, 'info-1', 'cards_get', {id: 'rec-1'});
+		getAgentTask.mockResolvedValue(Ok({...task, finishedAt: new Date('2026-10-16T09:30:00Z')}));
+		const finished = await runAgentTool(caller, 'info-1', 'cards_get', {id: 'rec-1'});
+
+		expect(unknown.unwrapErr()).toMatchObject({kind: 'not_found', resource: 'task', id: 'task-1'});
+		expect(finished.unwrapErr()).toMatchObject({kind: 'validation_error', message: expect.stringContaining('Task task-1 (Find the Visa) is finished')});
+		expect(connector.get).not.toHaveBeenCalled();
+		expect(logAgentRequest).not.toHaveBeenCalled();
 	});
 
 	test('a tool without its action is refused and logged as denied, its search too', async () => {

@@ -2,9 +2,11 @@ import {mcpToolSchema} from '@proxy/integrations';
 import {z} from 'zod';
 import {dataRecordSchema} from '@/client/schemas';
 import {apiRequest, apiSend} from '@/client/request';
+import {clearAgentTask, storedAgentTask} from '@/lib/agent-task';
 
-// The agent side: its own sign-in and cookie. Every records call is checked against the agent's
-// access and logged by the api, a refused one (403) too.
+// The agent side: its own sign-in and cookie. Every records call is made for the task the agent
+// is on (lib/agent-task.ts), checked against the agent's access and logged by the api with the
+// task, a refused one (403) too.
 
 const agentMeSchema = z.object({
 	agent: z.object({id: z.string(), providerId: z.string(), name: z.string()}),
@@ -25,8 +27,9 @@ const agentMeSchema = z.object({
 
 export type AgentMe = z.infer<typeof agentMeSchema>;
 
-/** 401 wrong username or password, 403 a revoked login. */
+/** 401 wrong username or password, 403 a revoked login. The task of whoever was signed in before is let go. */
 export function signInAgent(username: string, password: string) {
+	clearAgentTask();
 	return apiRequest('POST', '/agent-auth/login', z.object({agentId: z.string()}), {
 		username,
 		password,
@@ -34,7 +37,44 @@ export function signInAgent(username: string, password: string) {
 }
 
 export function signOutAgent() {
+	clearAgentTask();
 	return apiSend('POST', '/agent-auth/logout');
+}
+
+const agentTaskSchema = z.object({
+	// The task's id, which every run is made with.
+	task: z.string(),
+	title: z.string(),
+	goal: z.string(),
+	startedAt: z.string(),
+	finishedAt: z.string().nullable(),
+});
+
+export type AgentTask = z.infer<typeof agentTaskSchema>;
+
+/** The agent's tasks still under way, newest first: it can have any number at once. */
+export function listAgentTasks() {
+	return apiRequest('GET', '/api/agent/tasks', z.object({tasks: z.array(agentTaskSchema)}));
+}
+
+/** Starts a task: what the agent is about to do for the person, as the MCP server's start_task takes it. */
+export function startAgentTask(task: {title: string; goal: string}) {
+	return apiRequest('POST', '/api/agent/tasks', agentTaskSchema, task);
+}
+
+/** Marks the task finished, as finish_task does. */
+export function finishAgentTask(taskId: string) {
+	return apiRequest(
+		'POST',
+		`/api/agent/tasks/${encodeURIComponent(taskId)}/finish`,
+		agentTaskSchema,
+	);
+}
+
+// A run's body: its params, for the task the pages are on. Without one the api refuses the run,
+// and the pages send the agent to start or choose one first.
+function runBody(params: unknown) {
+	return {task: storedAgentTask()?.id ?? '', params};
 }
 
 /** Who is signed in and everything it can reach. A 401 means "send it to /agent/login". */
@@ -65,7 +105,7 @@ export function runAgentListTool(
 			nextPage: z.string().nullable(),
 			trail: z.array(z.object({id: z.string(), title: z.string()})).optional(),
 		}),
-		{params},
+		runBody(params),
 	);
 }
 
@@ -75,7 +115,12 @@ export function runAgentServerTool(
 	tool: string,
 	params: Record<string, unknown>,
 ) {
-	return apiRequest('POST', toolPath(connectionId, tool), z.object({text: z.string()}), {params});
+	return apiRequest(
+		'POST',
+		toolPath(connectionId, tool),
+		z.object({text: z.string()}),
+		runBody(params),
+	);
 }
 
 /**
@@ -91,16 +136,19 @@ export function runAgentRecordTool(
 		'POST',
 		toolPath(connectionId, tool),
 		z.object({record: dataRecordSchema.nullable()}),
-		{
-			params,
-		},
+		runBody(params),
 	);
 }
 
 /**
  * Feedback for the makers of Personal Agent Proxy, such as a page that didn't work as the agent
- * expected, and the connection and tool it is about where there are any.
+ * expected, and the connection and tool it is about where there are any, with the task the agent
+ * is on where it is on one.
  */
 export function sendAgentFeedback(feedback: {message: string; connection?: string; tool?: string}) {
-	return apiRequest('POST', '/api/agent/feedback', z.object({sent: z.literal(true)}), feedback);
+	const task = storedAgentTask()?.id;
+	return apiRequest('POST', '/api/agent/feedback', z.object({sent: z.literal(true)}), {
+		...feedback,
+		...(task === undefined ? {} : {task}),
+	});
 }

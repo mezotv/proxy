@@ -17,10 +17,13 @@ export type AuditEntryRow = {
 	query: string | null;
 	outcome: AuditOutcome;
 	via: AuditVia;
+	// The agent's task it was for (task.ts); none for entries from before tasks, and for what
+	// Personal Agent Proxy did itself.
+	taskId: string | null;
 	createdAt: Date;
 };
 
-/** Logs one request of an agent, and marks the agent active now. */
+/** Logs one request of an agent, made for one of its tasks, and marks the agent active now. */
 export async function logAgentRequest(data: {
 	orgId: string;
 	agentId: string;
@@ -31,6 +34,7 @@ export async function logAgentRequest(data: {
 	query: string | null;
 	outcome: AuditOutcome;
 	via: AuditVia;
+	taskId: string;
 }): Promise<Result<void, ApiError>> {
 	return wrapDb(async () => {
 		await db.$transaction([
@@ -52,20 +56,23 @@ export async function logProxyAction(data: {
 	recordTitle: string | null;
 }): Promise<Result<void, ApiError>> {
 	return wrapDb(async () => {
-		await db.auditEntry.create({data: {...data, agentId: null, query: null, outcome: 'allowed'}});
+		await db.auditEntry.create({
+			data: {...data, agentId: null, query: null, outcome: 'allowed', taskId: null},
+		});
 	});
 }
 
 /**
- * Newest first, optionally only one agent's or one connection's requests, only allowed or denied
- * ones, or only those made from `from` until before `to`; an `agentId` of null is what Personal
- * Agent Proxy did itself.
+ * Newest first, optionally only one agent's or one connection's requests, only one task's, only
+ * allowed or denied ones, or only those made from `from` until before `to`; an `agentId` of null is
+ * what Personal Agent Proxy did itself.
  */
 export async function listAuditEntries(
 	orgId: string,
 	filter: {
 		agentId?: string | null;
 		connectionId?: string;
+		taskId?: string;
 		outcome?: AuditOutcome;
 		from?: Date;
 		to?: Date;
@@ -92,6 +99,7 @@ export async function listAuditEntries(
 				query: true,
 				outcome: true,
 				via: true,
+				taskId: true,
 				createdAt: true,
 			},
 		}),

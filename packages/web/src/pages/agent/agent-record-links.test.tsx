@@ -1,14 +1,25 @@
 /// <reference types="bun" />
 
-import {afterEach, describe, expect, test} from 'bun:test';
+import {afterEach, beforeEach, describe, expect, test} from 'bun:test';
 import {cleanup, render, screen} from '@testing-library/react';
 import {createMemoryRouter, RouterProvider} from 'react-router';
 import {AgentSide} from '@/components/agent-side';
+import {clearAgentTask, storeAgentTask} from '@/lib/agent-task';
 import {AgentCollectionPage} from '@/pages/agent/agent-collection-page';
 import {AgentRecordPage} from '@/pages/agent/agent-record-page';
 
+// The pages open for an agent on a task.
+beforeEach(() => {
+	storeAgentTask({
+		id: 'task-1',
+		title: 'Find the Q3 email',
+		goal: 'Open the email about Q3 planning',
+	});
+});
+
 afterEach(() => {
 	cleanup();
+	clearAgentTask();
 });
 
 const GMAIL_URL = 'https://mail.google.com/mail/?authuser=alex%40example.com#all/m1';

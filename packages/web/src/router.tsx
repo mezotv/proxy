@@ -1,5 +1,10 @@
 import {Navigate, createBrowserRouter, redirect} from 'react-router';
-import {agentCollectionLoader, agentRecordLoader, agentSideLoader} from '@/agent-loaders';
+import {
+	agentCollectionLoader,
+	agentRecordLoader,
+	agentSideLoader,
+	agentTasksLoader,
+} from '@/agent-loaders';
 import {getSignInMethods, type SignInMethods} from '@/client/auth-client';
 import {getMe} from '@/client/me-client';
 import {AgentSide} from '@/components/agent-side';
@@ -36,6 +41,7 @@ import {AgentHomePage} from '@/pages/agent/agent-home-page';
 import {AgentLoginPage} from '@/pages/agent/agent-login-page';
 import {AgentNewRecordPage} from '@/pages/agent/agent-new-record-page';
 import {AgentRecordPage} from '@/pages/agent/agent-record-page';
+import {AgentTaskPage} from '@/pages/agent/agent-task-page';
 import {AgentToolPage} from '@/pages/agent/agent-tool-page';
 import {ConnectAgentPage} from '@/pages/connect-agent-page';
 import {ConnectionPage} from '@/pages/connection-page';
@@ -162,6 +168,9 @@ export const router = createBrowserRouter([
 		errorElement: <RouteError />,
 		children: [
 			{path: '/agent', element: <AgentHomePage />},
+			// Where an agent on no task is sent, and where it switches between the tasks it has under
+			// way: every other page makes requests for one.
+			{path: '/agent/task', loader: agentTasksLoader, element: <AgentTaskPage />},
 			{path: '/agent/feedback', element: <AgentFeedbackPage />},
 			// A custom MCP server's tool, which has no collection.
 			{path: '/agent/:connectionId/tool/:toolName', element: <AgentToolPage />},

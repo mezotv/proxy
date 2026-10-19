@@ -155,6 +155,21 @@ async function signInAgent(human: BrowserContext, password: string): Promise<Bro
 	return fallback;
 }
 
+// The agent pages make every request for a task the agent is on, kept in the browser's storage,
+// and send an agent without one to start one: the crawl starts a task through the api and puts
+// it where the pages look, in every page it opens as the agent.
+async function onTask(context: BrowserContext): Promise<BrowserContext> {
+	const task = (await postJson(context, '/api/agent/tasks', {
+		title: 'Look around',
+		goal: 'See every page of the agent side for the screen map.',
+	})) as {task: string; title: string; goal: string};
+	const stored = JSON.stringify({id: task.task, title: task.title, goal: task.goal});
+	await context.addInitScript((value: string) => {
+		localStorage.setItem('agent-task', value);
+	}, stored);
+	return context;
+}
+
 // `/connect-agent` only opens with a request an MCP client's sign-in sealed, so the crawl
 // registers as one and starts a sign-in, taking the address the api sends the browser to.
 async function connectAgentPath(human: BrowserContext): Promise<string> {
@@ -206,7 +221,7 @@ const contexts: Record<ContextName, BrowserContext> = {
 	anon: await newContext(),
 	human,
 	fresh: fresh.context,
-	agent: await signInAgent(human, agentPassword),
+	agent: await onTask(await signInAgent(human, agentPassword)),
 };
 
 // The folder is emptied, not replaced: Vite serves it and stops noticing files in a new one.

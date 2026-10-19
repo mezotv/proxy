@@ -2,7 +2,15 @@ import express from 'express';
 
 import {handleActivitySummaryRoute, handleListActivityRoute} from '../activity/route';
 import {handleAgentLoginRoute, handleAgentLogoutRoute} from '../agent-auth/session';
-import {handleAgentFeedbackRoute, handleAgentListToolsRoute, handleAgentMeRoute, handleAgentRunToolRoute} from '../agent-side/route';
+import {
+	handleAgentFeedbackRoute,
+	handleAgentFinishTaskRoute,
+	handleAgentListTasksRoute,
+	handleAgentListToolsRoute,
+	handleAgentMeRoute,
+	handleAgentRunToolRoute,
+	handleAgentStartTaskRoute,
+} from '../agent-side/route';
 import {
 	handleCreateAgentRoute,
 	handleDeleteAgentRoute,
@@ -135,12 +143,15 @@ export function createApiRouter(): express.Router {
 	router.get('/api/widgets/files', withAuthResult('Widget find files route', handleFindFilesRoute));
 	router.get('/api/widgets/rates', withAuthResult('Widget exchange rates route', handleRatesRoute));
 
-	// The agent side: its own sign-in and cookie, and every request checked against the agent's
-	// access and logged.
+	// The agent side: its own sign-in and cookie, and every request made for one of the agent's
+	// tasks, checked against the agent's access and logged with the task.
 	router.post('/agent-auth/login', requireBrowserOrigin, wrapAsyncRoute('Agent login route', handleAgentLoginRoute));
 	router.post('/agent-auth/logout', requireBrowserOrigin, wrapAsyncRoute('Agent logout route', handleAgentLogoutRoute));
 	router.use('/api/agent', requireBrowserOrigin);
 	router.get('/api/agent/me', withAgentAuthResult('Agent me route', handleAgentMeRoute));
+	router.get('/api/agent/tasks', withAgentAuthResult('Agent list tasks route', handleAgentListTasksRoute));
+	router.post('/api/agent/tasks', withAgentAuthResult('Agent start task route', handleAgentStartTaskRoute));
+	router.post('/api/agent/tasks/:taskId/finish', withAgentAuthResult('Agent finish task route', handleAgentFinishTaskRoute));
 	router.get('/api/agent/connections/:connectionId/tools', withAgentAuthResult('Agent list tools route', handleAgentListToolsRoute));
 	router.post('/api/agent/connections/:connectionId/tools/:toolName', withAgentAuthResult('Agent run tool route', handleAgentRunToolRoute));
 	router.post('/api/agent/feedback', withAgentAuthResult('Agent feedback route', handleAgentFeedbackRoute));
