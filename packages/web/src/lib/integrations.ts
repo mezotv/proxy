@@ -7,10 +7,7 @@ import {
 	type McpTool,
 } from '@proxy/integrations';
 
-// A brand's own logo where it has one (in `public/integrations/`), else an icon: Information is
-// ours and Email is any mailbox. Custom MCP servers use our mark because Personal Agent Proxy is
-// the service connecting them. A logo that is already a square tile, as Granola's and Linear's
-// are, fills the tile edge to edge.
+// A brand's own logo, `public/integrations/<id>.svg`, unless `LOGOS` says otherwise.
 type IntegrationLogoImage = {src: string; fill?: boolean};
 
 export type Integration = CatalogIntegration & {
@@ -40,24 +37,27 @@ export const NEEDS: Record<Need, {variables: string[]; docsUrl: string}> = {
 
 const NEEDED_BY: Partial<Record<IntegrationId, Need>> = {google: 'google', plaid: 'plaid'};
 
-const LOGOS: Record<IntegrationId, LucideIcon | IntegrationLogoImage> = {
+// The integrations whose logo isn't `public/integrations/<id>.svg` as it is: an icon for those
+// that are no one brand's, Information being ours and Email any mailbox, and our mark for custom
+// MCP servers, since Personal Agent Proxy is the service connecting them; another kind of file;
+// or a logo that is already a square tile, as Granola's and Linear's are, which fills the tile
+// edge to edge.
+const LOGOS: Partial<Record<IntegrationId, LucideIcon | IntegrationLogoImage>> = {
 	info: IdCardIcon,
 	email: MailIcon,
-	google: {src: '/integrations/google.svg'},
-	granola: {src: '/integrations/granola.png', fill: true},
-	notion: {src: '/integrations/notion.svg'},
-	linear: {src: '/integrations/linear.svg', fill: true},
-	exa: {src: '/integrations/exa.svg'},
-	parallel: {src: '/integrations/parallel.svg'},
-	plaid: {src: '/integrations/plaid.svg'},
-	postgres: {src: '/integrations/postgresql.svg'},
-	mysql: {src: '/integrations/mysql.svg'},
 	mcp: {src: '/favicon.svg'},
+	granola: {src: '/integrations/granola.png', fill: true},
+	linear: {src: '/integrations/linear.svg', fill: true},
 };
+
+/** An integration's logo: its file in `public/integrations/`, named by its id, unless `LOGOS` has another. */
+export function logoOf(integrationId: IntegrationId): LucideIcon | IntegrationLogoImage {
+	return LOGOS[integrationId] ?? {src: `/integrations/${integrationId}.svg`};
+}
 
 export const INTEGRATIONS: Integration[] = CATALOG.map((integration) => ({
 	...integration,
-	logo: LOGOS[integration.id],
+	logo: logoOf(integration.id),
 	needs: NEEDED_BY[integration.id],
 }));
 
@@ -75,7 +75,7 @@ export function integrationOf(connection: {
 	if (!integration) {
 		return null;
 	}
-	return {...integration, logo: LOGOS[integration.id]};
+	return {...integration, logo: logoOf(integration.id)};
 }
 
 // The integrations connected by signing in to them, as the catalog marks them (`signIn`). Their
