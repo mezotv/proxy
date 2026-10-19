@@ -22,7 +22,7 @@ import {BUILT_IN_MCP} from '../connections/built-in-mcp';
 import {handleConnectCustomMcpRoute, handleCustomMcpCallbackRoute, handleRefreshCustomMcpToolsRoute} from '../connections/custom/route';
 import {handleConnectEmailRoute, handleTestEmailRoute} from '../connections/email/route';
 import {handleGoogleCallbackRoute as handleConnectGoogleCallbackRoute, handleStartGoogleRoute} from '../connections/google/route';
-import {mcpConnectRoutes} from '../connections/mcp/mcp-connect';
+import {keyConnectRoute, mcpConnectRoutes} from '../connections/mcp/mcp-connect';
 import {handleConnectMysqlRoute, handleTestMysqlRoute} from '../connections/mysql/route';
 import {handleConnectPlaidRoute, handleCreatePlaidLinkTokenRoute} from '../connections/plaid/route';
 import {handleConnectPostgresRoute, handleTestPostgresRoute} from '../connections/postgres/route';
@@ -68,12 +68,16 @@ export function createApiRouter(): express.Router {
 	router.post('/api/connections/email/test', withAuthResult('Test email route', handleTestEmailRoute));
 	router.get('/api/connections/google/start', withAuth('Start Google sign-in route', handleStartGoogleRoute));
 	router.get('/api/connections/google/callback', withAuth('Google sign-in callback route', handleConnectGoogleCallbackRoute));
-	// Every integration built on its MCP server signs in the same way, from its declaration.
+	// Every integration built on its MCP server signs in the same way, from its declaration, and
+	// takes an API key the same way where its server does.
 	for (const builtIn of BUILT_IN_MCP) {
 		const {handleStart, handleCallback} = mcpConnectRoutes(builtIn);
 		const {integrationId, server} = builtIn;
 		router.get(`/api/connections/${integrationId}/start`, withAuth(`Start ${server.name} sign-in route`, handleStart));
 		router.get(`/api/connections/${integrationId}/callback`, withAuth(`${server.name} sign-in callback route`, handleCallback));
+		if (builtIn.apiKey) {
+			router.post(`/api/connections/${integrationId}`, withAuthResult(`Connect ${server.name} with an API key route`, keyConnectRoute(builtIn)));
+		}
 	}
 	router.post('/api/connections/plaid', withAuthResult('Connect Plaid route', handleConnectPlaidRoute));
 	router.post('/api/connections/plaid/link-token', withAuthResult('Create Plaid Link token route', handleCreatePlaidLinkTokenRoute));

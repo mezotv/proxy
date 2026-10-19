@@ -1,6 +1,6 @@
 import type {Action, OwnSettings} from '@proxy/integrations';
 import {CheckCheckIcon, Undo2Icon} from 'lucide-react';
-import {useId, useRef, useState} from 'react';
+import {useEffect, useId, useRef, useState} from 'react';
 import {RowList} from '@/components/row-list';
 import {IconButton} from '@/components/icon-button';
 import {Badge} from '@proxy/ui/components/badge';
@@ -51,10 +51,14 @@ export function ConnectionAccess({
 	const [pending, setPending] = useState<Partial<Record<string, boolean>>>({});
 	const queues = useRef<Partial<Record<string, Promise<void>>>>({});
 	const rangeAnchor = useRef<string | null>(null);
+	// The latest settings, for a change saved after others finished, read when it runs rather than
+	// when it was clicked.
 	const defaultsRef = useRef(defaults);
 	const ownRef = useRef(own);
-	defaultsRef.current = defaults;
-	ownRef.current = own;
+	useEffect(() => {
+		defaultsRef.current = defaults;
+		ownRef.current = own;
+	});
 	const isDefault = (id: string) => defaults.includes(id);
 	const isUnavailable = (id: string) => unavailable.includes(id);
 	const storedIsOn = (id: string) => (own ? (own[id] ?? isDefault(id)) : isDefault(id));
@@ -321,26 +325,46 @@ function groupsOf(actions: Action[]): Group[] {
 	return groups;
 }
 
-// Under a connection's permissions when its sign-in didn't cover some actions, or it has none yet,
-// as one moved over from a custom MCP server may not. Signing in gives the same connection new
-// tokens, its defaults and every agent's settings kept.
+// Under a connection's permissions: when its sign-in didn't cover some actions (`unavailable`),
+// when it has none yet, as one moved over from a custom MCP server may not (`needed`), or, for an
+// integration that says nothing of who signed in, so only this page renews its connection, always
+// (`renew`). Signing in again, or a new API key where the integration takes one (`onUseKey`),
+// gives the same connection its new credential, its defaults and every agent's settings kept.
 export function SignInAgain({
 	href,
-	needed = false,
+	reason,
+	onUseKey,
 	className,
 }: {
 	href: string;
-	needed?: boolean;
+	reason: 'unavailable' | 'needed' | 'renew';
+	onUseKey?: () => void;
 	className?: string;
 }) {
-	if (needed) {
+	const link = 'text-foreground underline underline-offset-4';
+	const useKey = onUseKey && (
+		<button type="button" onClick={onUseKey} className={link}>
+			use an API key
+		</button>
+	);
+	if (reason === 'needed') {
 		return (
 			<p className={cn('text-sm text-muted-foreground', className)}>
 				This connection isn't signed in yet, so agents can't use it.{' '}
-				<a href={href} className="text-foreground underline underline-offset-4">
+				<a href={href} className={link}>
 					Sign in
-				</a>{' '}
-				to start.
+				</a>
+				{useKey && <>, or {useKey},</>} to start.
+			</p>
+		);
+	}
+	if (reason === 'renew') {
+		return (
+			<p className={cn('text-sm text-muted-foreground', className)}>
+				<a href={href} className={link}>
+					Sign in again
+				</a>
+				{useKey && <>, or {useKey}</>}, keeping every agent's settings.
 			</p>
 		);
 	}

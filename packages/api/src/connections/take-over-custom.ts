@@ -12,16 +12,19 @@ import {readStoredJson} from '../utils/stored-json';
 import {builtInForHost} from './built-in-mcp';
 import {customCredentialSchema} from './custom/custom-mcp';
 import type {BuiltInMcp, ToolParams} from './mcp/built-in';
+import {accountOf, keyAccount, keyAccountOf} from './mcp/mcp-connect';
 import type {McpCredential} from './mcp/mcp-oauth';
+import type {McpKeyCredential} from './mcp/mcp-session';
 
 /**
  * Moving custom MCP connections over to the integration built in since on the same server, every
  * time the api starts: what was connected by address before becomes a connection of the
  * integration, keeping its id, its name and its activity. Its tools' settings become the
  * integration's actions, never allowing more than before, and its tool runs the integration's
- * requests. A sign-in to the server itself carries over, for the account it is for; a token typed
- * in, or none, doesn't, and the connection waits to be signed in to (`needsSignIn`). Done once per
- * connection, however many servers start at once (`takeOverConnection`).
+ * requests. A sign-in to the server itself carries over, for the account it is for, and a token
+ * typed in as the integration's API key, where it takes one; otherwise the connection waits to be
+ * signed in to (`needsSignIn`). Done once per connection, however many servers start at once
+ * (`takeOverConnection`).
  */
 
 type Grant = {agentId: string; actionId: string; allowed: boolean};
@@ -75,20 +78,36 @@ function serverAddress(url: string): string | null {
 }
 
 /**
- * The credential of a custom connection signed in to the integration's own server, through its
- * own authorization server, as the integration keeps one; null for one with a token typed in, or
- * none, or signed in to elsewhere, which has to be signed in to again.
+ * The credential of a custom connection as the integration keeps one: a sign-in to the
+ * integration's own server, through its own authorization server, or a token typed in as the
+ * integration's API key, where it takes one and the token is a bare one. Null for anything else,
+ * which has to be signed in to again.
  */
-export function movedCredential(builtIn: BuiltInMcp, stored: string | null): McpCredential | null {
+export function movedCredential(builtIn: BuiltInMcp, stored: string | null): McpCredential | McpKeyCredential | null {
 	const read = readStoredJson(stored ?? '', customCredentialSchema);
-	if (read.isErr() || read.value.auth !== 'oauth') {
+	if (read.isErr() || read.value.auth === 'none') {
 		return null;
 	}
 	const custom = read.value;
+	if (custom.auth === 'token') {
+		return builtIn.apiKey && !/\s/.test(custom.token) ? {auth: 'key', key: custom.token} : null;
+	}
 	if (serverAddress(custom.url) !== serverAddress(builtIn.server.url) || custom.server.tokenUrl !== builtIn.server.tokenUrl) {
 		return null;
 	}
 	return {clientId: custom.clientId, accessToken: custom.accessToken, refreshToken: custom.refreshToken, expiresAt: custom.expiresAt};
+}
+
+// The account as signing in again would find it, or the key's; else the server's address, until
+// it is signed in to.
+async function movedAccount(builtIn: BuiltInMcp, credential: McpCredential | McpKeyCredential | null, address: string): Promise<string> {
+	if (!credential) {
+		return address;
+	}
+	if ('key' in credential) {
+		return (await keyAccountOf(builtIn, credential.key)).unwrapOr(keyAccount(credential.key));
+	}
+	return (await accountOf(builtIn, {accessToken: credential.accessToken, workspaceName: null})).unwrapOr(address);
 }
 
 /** Moves one custom connection over; `Ok(false)` when another server already did. */
@@ -96,9 +115,7 @@ export function takeOver(connection: CustomMcpConnectionRow, builtIn: BuiltInMcp
 	return Do(async ($) => {
 		const integration = $(requirePresent(findIntegration(builtIn.integrationId), ApiErr.internalError(new Error(`No integration ${builtIn.integrationId}`))));
 		const credential = movedCredential(builtIn, connection.credential);
-		// The account the sign-in is for, as signing in again finds it; else the server's address,
-		// until it is signed in to.
-		const account = credential ? (await builtIn.account({credential, workspaceName: null})).unwrapOr(connection.account) : connection.account;
+		const account = await movedAccount(builtIn, credential, connection.account);
 		const permissions = movedPermissions(
 			builtIn,
 			integration.actions.map((action) => action.id),

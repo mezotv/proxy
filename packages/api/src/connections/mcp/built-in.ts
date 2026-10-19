@@ -3,15 +3,19 @@ import type {Result} from 'ts-results-es';
 import type {ApiError} from '@proxy/utils';
 import type {IntegrationId} from '@proxy/integrations';
 
-import type {McpServer, McpSignIn} from './mcp-oauth';
+import type {McpServer} from './mcp-oauth';
 
 /**
  * An integration built on its provider's MCP server, as Granola, Notion, Linear, Exa and Parallel
- * are: signed in to through the server (`mcpConnectRoutes`), and taking over the custom MCP
- * connections people made to the same server before it was built in (`take-over-custom.ts`). A
- * custom server at one of its hosts can't be added any more; one already there becomes a connection
- * of the integration, its tools' settings and runs as the integration's actions and requests.
+ * are: signed in to through the server, or connected with an API key where the server takes one
+ * (`mcp-connect.ts`), and taking over the custom MCP connections people made to the same server
+ * before it was built in (`take-over-custom.ts`). A custom server at one of its hosts can't be
+ * added any more; one already there becomes a connection of the integration, its tools' settings
+ * and runs as the integration's actions and requests.
  */
+
+/** What a connection reaches the server with, for naming its account: the access token or API key, and the workspace the sign-in named, where it did. */
+export type McpAccess = {accessToken: string; workspaceName: string | null};
 
 /** Params of a tool run, as the activity log kept them; null when they were cut short, or not kept. */
 export type ToolParams = Record<string, unknown> | null;
@@ -33,9 +37,15 @@ export type BuiltInMcp = {
 	server: McpServer;
 	// Hosts beyond the server's own that are the same service, as Parallel's keyless server.
 	otherHosts?: string[];
-	// The account a sign-in is for, as the connection shows it: two sign-ins to the same account are
-	// the same connection.
-	account: (signIn: McpSignIn) => Promise<Result<string, ApiError>>;
+	// The account a sign-in or a key is for, as the connection shows it: two sign-ins to the same
+	// account are the same connection. Left out where the provider says nothing of who signed in,
+	// as Exa and Parallel don't: every sign-in or key is a connection of its own, which only its
+	// own page renews.
+	account?: (access: McpAccess) => Promise<Result<string, ApiError>>;
+	// Also connected with an API key, sent as the bearer token (`apiKey` in the catalog): whether
+	// the server takes a key, as only a call with it shows for a server that answers anyone until
+	// a tool is called.
+	apiKey?: {check: (key: string) => Promise<Result<void, ApiError>>};
 	// The actions agents get with a new connection.
 	defaults: string[];
 	// The server's tools a custom connection was allowed, by name; any other's settings are dropped.

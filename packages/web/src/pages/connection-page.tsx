@@ -11,6 +11,7 @@ import {AppShell, PageTitle} from '@/components/app-shell';
 import {AuditList} from '@/components/audit-list';
 import {SignInToBankAgain} from '@/components/connect-bank-form';
 import {BackButton} from '@/components/back-button';
+import {ConnectWithKeyDialog} from '@/components/connect-with-key-dialog';
 import {ConnectionAccess, SignInAgain} from '@/components/connection-access';
 import {ConfirmDialog} from '@/components/confirm-dialog';
 import {IconButton} from '@/components/icon-button';
@@ -43,6 +44,7 @@ export function ConnectionPage() {
 	const added = searchParams.has('added');
 	const [disconnecting, setDisconnecting] = useState(false);
 	const [refreshing, setRefreshing] = useState(false);
+	const [replacingKey, setReplacingKey] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const integration = connection && integrationOf(connection);
 	if (!connection || !integration) {
@@ -50,13 +52,22 @@ export function ConnectionPage() {
 	}
 
 	const withAccess = agentsWithAccess(agents, connection);
-	const signInAgain =
-		connection.unavailable.length > 0
-			? signInPath(connection.integrationId, {
+	// Why the connection can be signed in to again from here: its sign-in left actions out, it has
+	// none, or its integration says nothing of who signed in, so only this page renews it.
+	const renewReason = connection.signInNeeded
+		? 'needed'
+		: connection.unavailable.length > 0
+			? 'unavailable'
+			: integration.apiKey
+				? 'renew'
+				: null;
+	const renew =
+		renewReason === null
+			? null
+			: signInPath(connection.integrationId, {
 					account: connection.account,
 					connection: connection.id,
-				})
-			: null;
+				});
 
 	return (
 		<AppShell
@@ -139,8 +150,24 @@ export function ConnectionPage() {
 							await revalidator.revalidate();
 						}}
 					/>
-					{signInAgain && (
-						<SignInAgain href={signInAgain} needed={connection.signInNeeded} className="md:px-3" />
+					{renew && renewReason && (
+						<SignInAgain
+							href={renew}
+							reason={renewReason}
+							onUseKey={integration.apiKey ? () => setReplacingKey(true) : undefined}
+							className="md:px-3"
+						/>
+					)}
+					{replacingKey && (
+						<ConnectWithKeyDialog
+							integrationId={integration.id}
+							connectionId={connection.id}
+							onClose={() => setReplacingKey(false)}
+							onConnected={async () => {
+								setReplacingKey(false);
+								await revalidator.revalidate();
+							}}
+						/>
 					)}
 					{connection.integrationId === 'plaid' && (
 						<SignInToBankAgain connectionId={connection.id} className="md:px-3" />

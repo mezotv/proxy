@@ -1,4 +1,4 @@
-import type {EmailProvider, MailServers} from '@proxy/integrations';
+import type {EmailProvider, IntegrationId, MailServers} from '@proxy/integrations';
 import {z} from 'zod';
 import {connectionSchema} from '@/client/schemas';
 import {apiRequest, apiSend} from '@/client/request';
@@ -84,6 +84,18 @@ export function connectMcp(input: ConnectMcpInput) {
 		]),
 		input,
 	);
+}
+
+export type ConnectWithKeyInput = {name?: string; key: string; connection?: string};
+
+/**
+ * Connects an integration whose connections the person names, Exa or Parallel, with an API key,
+ * checked with the service first: the new connection, called `name`, or, with `connection`, that
+ * connection given the key, its name kept. 422 is a key the service turned down, 502 the service
+ * out of reach, 400 says what is wrong with the key or the name.
+ */
+export function connectWithKey(integrationId: IntegrationId, input: ConnectWithKeyInput) {
+	return apiRequest('POST', `/api/connections/${integrationId}`, connectionSchema, input);
 }
 
 /** Asks a custom MCP server for its tools again and keeps the new list. */

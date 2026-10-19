@@ -385,6 +385,7 @@ export const LINEAR_PRIORITIES = ['No priority', 'Urgent', 'High', 'Medium', 'Lo
 const linear: Integration = {
 	id: 'linear',
 	signIn: true,
+	apiKey: {keysUrl: 'https://linear.app/settings/account/security'},
 	name: 'Linear',
 	description: 'Issues in a workspace',
 	actions: [
@@ -452,16 +453,22 @@ const linear: Integration = {
 };
 
 // The web, searched and read through a search engine made for agents, through its MCP server after
-// signing in to it: what an agent searches for and the pages it reads go to the provider, on the
-// account signed in with. A search is answered as the provider's results, each page's title,
-// address and the passages that fit the query; a page as its text. Nothing is listed or kept:
-// searches and pages are only ever run.
-function webIntegration(id: 'exa' | 'parallel', name: string, description: string): Integration {
+// signing in to it or with an API key made at `keysUrl`: what an agent searches for and the pages
+// it reads go to the provider, on the account signed in with or the key's. A search is answered as
+// the provider's results, each page's title, address and the passages that fit the query; a page as
+// its text. Nothing is listed or kept: searches and pages are only ever run.
+function webIntegration(
+	id: 'exa' | 'parallel',
+	name: string,
+	description: string,
+	keysUrl: string,
+): Integration {
 	return {
 		id,
 		name,
 		description,
 		signIn: true,
+		apiKey: {keysUrl},
 		actions: [
 			{
 				id: 'search',
@@ -532,9 +539,19 @@ function webIntegration(id: 'exa' | 'parallel', name: string, description: strin
 	};
 }
 
-const exa = webIntegration('exa', 'Exa', 'Search and read the web');
+const exa = webIntegration(
+	'exa',
+	'Exa',
+	'Search and read the web',
+	'https://dashboard.exa.ai/api-keys',
+);
 
-const parallel = webIntegration('parallel', 'Parallel', 'Search and read the web');
+const parallel = webIntegration(
+	'parallel',
+	'Parallel',
+	'Search and read the web',
+	'https://platform.parallel.ai',
+);
 
 // A SQL database, signed in to with a database user's name and password: PostgreSQL, or MySQL
 // and MariaDB. What the user may do in the database is the limit, so access is narrowed in

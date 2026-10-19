@@ -26,10 +26,10 @@ authorization server to the same rule; a server on a private address needs Perso
 
 The servers of the services Personal Agent Proxy connects itself, [Granola](/connections/granola),
 [Notion](/connections/notion), [Linear](/connections/linear), [Exa](/connections/exa) and
-[Parallel](/connections/parallel), are connected as those services: entering one's address opens
-the service's own sign-in, and makes a connection of the service under the name you gave, as
-adding it from the list of connections does. An access token is not needed for them. See also
-[When a server becomes built in](#when-a-server-becomes-built-in).
+[Parallel](/connections/parallel), are connected as those services, under the name you gave, as
+adding them from the list of connections does: entering one's address opens the service's own
+sign-in, or, for Exa, Linear and Parallel with an access token typed in, connects the service with it as
+its API key. See also [When a server becomes built in](#when-a-server-becomes-built-in).
 
 ### Sign in, if the server asks
 
@@ -87,5 +87,6 @@ its agents and its activity:
   for are dropped.
 - Tool runs in the activity log become the service's own requests, such as listing Linear issues
   or running a web search. Runs of tools it has no action for stay as they were.
-- A server you signed in to stays signed in. One connected with an access token, or without one,
-  has to be signed in to before agents can use it: open the connection and choose **Sign in**.
+- A server you signed in to stays signed in, and an access token typed in for Exa, Linear or Parallel
+  becomes the connection's API key. One connected without either has to be signed in to before
+  agents can use it: open the connection and choose **Sign in**.

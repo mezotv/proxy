@@ -3,21 +3,23 @@ title: Exa
 description: Connect Exa for agents to search the web and read web pages.
 ---
 
-Agents search the web and read pages through Exa, on the Exa account you sign in with. What
-they search for and the pages they read go to Exa, and searches count toward that account's
-usage. Nothing is kept in Personal Agent Proxy beyond the activity log.
+Agents search the web and read pages through Exa, on the Exa account you sign in with or the
+API key you give. What they search for and the pages they read go to Exa, and searches count
+toward that account's usage. Nothing is kept in Personal Agent Proxy beyond the activity log.
 
 ## Connect Exa
 
 <Steps>
 
-### Sign in with Exa
+### Sign in, or use an API key
 
-Open **Connections**, then **Add connection**, and **Sign in with Exa**. Sign in to your Exa
-account, or create one at [exa.ai](https://exa.ai), and approve access.
+Open **Connections**, then **Add connection**. Choose **Exa** to sign in with your Exa account,
+or the key beside it to paste an API key made at [dashboard.exa.ai](https://dashboard.exa.ai/api-keys). The key is checked with
+Exa before the connection is made, and sent with every request as its bearer token.
 
-An organization has one Exa connection: signing in again, with the same account or another,
-gives it the new sign-in and keeps every agent's settings.
+Exa says nothing about who signed in, so a connection made with a key shows as the key's end,
+and one signed in to as **Signed in**. Connect Exa as often as you like, for another account or
+another key; rename a connection from the list of connections to tell them apart.
 
 ### Review the defaults
 
@@ -25,6 +27,9 @@ A new Exa connection gives every agent Search the web and Read web pages. Turn e
 connection's page, or for one agent on the agent's page.
 
 </Steps>
+
+To sign in again, or replace the key, open the connection: under its permissions, choose **Sign in
+again** or **use an API key**. The connection keeps its name and every agent's settings.
 
 ## What agents can do
 

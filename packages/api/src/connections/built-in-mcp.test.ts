@@ -41,6 +41,19 @@ describe('BUILT_IN_MCP', () => {
 		expect(signedIn.toSorted()).toEqual(['google', ...BUILT_IN_MCP.map((builtIn) => builtIn.integrationId)].toSorted());
 	});
 
+	test('exactly the integrations the catalog says take an API key do, and are signed in to', () => {
+		const keyed = INTEGRATIONS.filter((integration) => integration.apiKey);
+		expect(keyed.map((integration) => integration.id).toSorted()).toEqual(
+			BUILT_IN_MCP.filter((builtIn) => builtIn.apiKey)
+				.map((builtIn) => builtIn.integrationId)
+				.toSorted(),
+		);
+		for (const integration of keyed) {
+			expect(integration.signIn, integration.id).toBe(true);
+			expect(new URL(integration.apiKey?.keysUrl ?? '').protocol, integration.id).toBe('https:');
+		}
+	});
+
 	test('no two integrations take over the same host', () => {
 		const hosts = BUILT_IN_MCP.flatMap(builtInHosts);
 		expect(new Set(hosts).size).toBe(hosts.length);

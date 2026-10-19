@@ -4,7 +4,8 @@ import {z} from 'zod';
 import {ApiErr, type ApiError, Do, parseSchema} from '@proxy/utils';
 
 import {callMcpTool} from '../mcp/mcp-client';
-import type {McpServer, McpSignIn} from '../mcp/mcp-oauth';
+import type {McpAccess} from '../mcp/built-in';
+import type {McpServer} from '../mcp/mcp-oauth';
 
 /**
  * Notion's MCP server and what its tools answer: JSON, a page's own text inside it as Notion writes
@@ -55,15 +56,15 @@ const usersSchema = z.object({results: z.array(z.object({name: z.string().option
  * The Notion account a sign-in is for, by who signed in and the workspace they chose:
  * "alex@example.com · Acme". Signing in to another workspace is another connection.
  */
-export function getNotionAccount(signIn: McpSignIn): Promise<Result<string, ApiError>> {
+export function getNotionAccount(access: McpAccess): Promise<Result<string, ApiError>> {
 	return Do(async ($) => {
-		const text = $(await callMcpTool(NOTION, signIn.credential.accessToken, 'notion-get-users', {user_id: 'self'}));
+		const text = $(await callMcpTool(NOTION, access.accessToken, 'notion-get-users', {user_id: 'self'}));
 		const user = $(parseJson(text, usersSchema)).results[0];
 		const who = user?.email?.toLowerCase() ?? user?.name;
 		if (!who) {
 			return $(Err(ApiErr.providerUnreachable(new Error('Notion did not say who signed in'))));
 		}
-		return signIn.workspaceName ? `${who} · ${signIn.workspaceName}` : who;
+		return access.workspaceName ? `${who} · ${access.workspaceName}` : who;
 	});
 }
 

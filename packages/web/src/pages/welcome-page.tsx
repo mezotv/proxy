@@ -185,6 +185,7 @@ function ConnectionsStep({
 				experiments={experiments}
 				returnTo="welcome"
 				onConnectForm={(integrationId) => navigate(`/welcome/connections/${integrationId}`)}
+				onConnected={(connection) => navigate(`/welcome/connections/${connection.id}`)}
 			/>
 			<div className="flex justify-between gap-2">
 				<Button variant="outline" nativeButton={false} render={<Link to="/welcome" />}>
@@ -348,7 +349,12 @@ function ConnectionStep({
 					}}
 				/>
 			</div>
-			{signInAgain && <SignInAgain href={signInAgain} needed={connection.signInNeeded} />}
+			{signInAgain && (
+				<SignInAgain
+					href={signInAgain}
+					reason={connection.signInNeeded ? 'needed' : 'unavailable'}
+				/>
+			)}
 			{defaults.every((id) => connection.unavailable.includes(id)) && (
 				<p className="text-sm text-muted-foreground">
 					Nothing is ticked, so {agentName} can't use this account yet.

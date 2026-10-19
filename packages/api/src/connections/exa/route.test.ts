@@ -6,16 +6,19 @@ import type {ApiError} from '@proxy/utils';
 const findAccountConnection = mock();
 const createConnection = mock();
 const renewConnection = mock();
+const updateConnectionName = mock();
+
+const getConnection = mock();
 
 mock.module('@proxy/db/connection', () => ({
-	getConnection: mock(),
+	getConnection,
 	findAccountConnection,
 	createConnection,
 	renewConnection,
 	updateConnectionCredential: mock(),
 	getConnectionCredential: mock(async () => Ok(null)),
 	updateConnectionTools: mock(),
-	updateConnectionName: mock(),
+	updateConnectionName,
 }));
 
 const getUserOrgId = mock();
@@ -49,6 +52,12 @@ spyOn(globalThis, 'fetch').mockImplementation((async (input: string | URL | Requ
 	if (url.pathname === '/api/oauth/register') {
 		return Response.json({client_id: 'client-1'}, {status: 201});
 	}
+	if (url.host === 'mcp.exa.ai') {
+		// Exa's server answers anyone; a key it turns down fails the tool call.
+		const bad = new Headers(init?.headers).get('authorization') === 'Bearer bad-key';
+		const text = bad ? 'web_fetch_exa error (401): Invalid API key. Provide a valid key.' : '# Example Domain\nURL: https://example.com\n\nExample';
+		return Response.json({jsonrpc: '2.0', id: 1, result: {content: [{type: 'text', text}], ...(bad ? {isError: true} : {})}});
+	}
 	return Response.json({access_token: 'access-1', token_type: 'bearer'});
 }) as typeof fetch);
 
@@ -76,10 +85,10 @@ function makeRes() {
 
 const user = {userId: 'user-1', email: 'alex@example.com'};
 
-async function start() {
+async function start(query: Record<string, string> = {}) {
 	const {handleStart: handleStartExaRoute} = await routes();
 	const res = makeRes();
-	await handleStartExaRoute({user, query: {}, headers: {}} as never, res as never);
+	await handleStartExaRoute({user, query, headers: {}} as never, res as never);
 	const cookie = res.cookies.find((candidate) => candidate.name === 'proxy.exa-state');
 	const authorizeUrl = new URL(res.redirect.mock.calls[0]?.[0] as string);
 	return {cookie, authorizeUrl, state: authorizeUrl.searchParams.get('state') ?? ''};
@@ -92,12 +101,24 @@ async function callback(args: {cookie: string; query: Record<string, string>}) {
 	return res;
 }
 
+// What a connection made with a key answers, from what was saved.
+async function connectWithKey(body: unknown) {
+	const {keyConnectRoute} = await import('../mcp/mcp-connect');
+	const {EXA_MCP} = await import('./route');
+	return keyConnectRoute(EXA_MCP)({user, body} as never);
+}
+
+const existing = {id: 'conn-0', integrationId: 'exa', account: 'Signed in', createdAt: new Date('2026-10-01T00:00:00Z'), tools: null, name: 'Team Exa', defaults: [{actionId: 'search'}]};
+
 beforeEach(() => {
 	mock.clearAllMocks();
 	exa.requests = [];
 	getUserOrgId.mockResolvedValue(Ok('org-1'));
 	findAccountConnection.mockResolvedValue(Ok(null));
-	createConnection.mockResolvedValue(Ok({id: 'conn-1'}));
+	createConnection.mockImplementation(async (data: {integrationId: string; account: string; defaults: string[]; name?: string}) =>
+		Ok({id: 'conn-1', integrationId: data.integrationId, account: data.account, createdAt: new Date(), tools: null, name: data.name ?? null, defaults: data.defaults.map((actionId) => ({actionId}))}),
+	);
+	getConnection.mockResolvedValue(Ok(null));
 	renewConnection.mockResolvedValue(Ok(undefined));
 });
 
@@ -123,18 +144,28 @@ describe('handleExaCallbackRoute', () => {
 
 		expect(exa.requests.at(-1)?.url.href).toBe('https://auth.exa.ai/api/oauth/token');
 		const created = createConnection.mock.calls[0]?.[0];
-		expect(created).toMatchObject({orgId: 'org-1', integrationId: 'exa', account: 'Exa', defaults: ['search', 'fetch']});
+		expect(created).toMatchObject({orgId: 'org-1', integrationId: 'exa', account: 'Signed in', defaults: ['search', 'fetch']});
 		expect(JSON.parse(String(created.credential).replace(/^enc:/, ''))).toMatchObject({clientId: 'client-1', refreshToken: null, expiresAt: null});
 		expect(res.redirect).toHaveBeenCalledWith('https://app.example.com/connections/conn-1?added');
 	});
 
-	test('signing in again, with any account, gives the connection the new tokens', async () => {
-		findAccountConnection.mockResolvedValue(Ok({id: 'conn-0'}));
+	test('signing in from the catalog again makes another connection, since Exa says nothing of who signed in', async () => {
 		const {cookie, state} = await start();
+		await callback({cookie: cookie?.value ?? '', query: {state, code: 'code-1'}});
+
+		expect(findAccountConnection).not.toHaveBeenCalled();
+		expect(createConnection).toHaveBeenCalledTimes(1);
+	});
+
+	test("begun from a connection's page (`?connection=`), the sign-in gives that connection the new tokens, its name kept", async () => {
+		getConnection.mockResolvedValue(Ok(existing));
+		const {cookie, state} = await start({connection: 'conn-0'});
 		const res = await callback({cookie: cookie?.value ?? '', query: {state, code: 'code-1'}});
 
+		expect(getConnection).toHaveBeenCalledWith('org-1', 'conn-0');
 		expect(createConnection).not.toHaveBeenCalled();
-		expect(renewConnection.mock.calls[0]?.[0]).toMatchObject({connectionId: 'conn-0'});
+		expect(renewConnection.mock.calls[0]?.[0]).toMatchObject({connectionId: 'conn-0', account: 'Signed in'});
+		expect(updateConnectionName).not.toHaveBeenCalled();
 		expect(res.redirect).toHaveBeenCalledWith('https://app.example.com/connections/conn-0');
 	});
 
@@ -146,7 +177,7 @@ describe('handleExaCallbackRoute', () => {
 		const cookie = begun.cookies.find((candidate) => candidate.name === 'proxy.exa-state');
 		await callback({cookie: cookie?.value ?? '', query: {state: url.searchParams.get('state') ?? '', code: 'code-1'}});
 
-		expect(createConnection.mock.calls[0]?.[0]).toMatchObject({integrationId: 'exa', account: 'Exa', name: 'Web search', defaults: ['search', 'fetch']});
+		expect(createConnection.mock.calls[0]?.[0]).toMatchObject({integrationId: 'exa', account: 'Signed in', name: 'Web search', defaults: ['search', 'fetch']});
 	});
 
 	test('a sign-in turned down at Exa goes back to the catalog', async () => {
@@ -155,5 +186,42 @@ describe('handleExaCallbackRoute', () => {
 
 		expect(res.redirect).toHaveBeenCalledWith('https://app.example.com/connections/new?error=exa');
 		expect(createConnection).not.toHaveBeenCalled();
+	});
+});
+
+describe('keyConnectRoute', () => {
+	test('connects with an API key, checked by reading a page with it: the key its credential, its end its account', async () => {
+		const connection = (await connectWithKey({key: 'exa-key-1234'})).unwrap();
+
+		expect(exa.requests.at(-1)?.url.href).toBe('https://mcp.exa.ai/mcp');
+		expect(JSON.parse(exa.requests.at(-1)?.body ?? '{}')).toMatchObject({method: 'tools/call', params: {name: 'web_fetch_exa', arguments: {urls: ['https://example.com']}}});
+		const created = createConnection.mock.calls[0]?.[0];
+		expect(created).toMatchObject({orgId: 'org-1', integrationId: 'exa', account: 'API key ending 1234', defaults: ['search', 'fetch']});
+		expect(created.name).toBeUndefined();
+		expect(JSON.parse(String(created.credential).replace(/^enc:/, ''))).toEqual({auth: 'key', key: 'exa-key-1234'});
+		expect(connection).toMatchObject({id: 'conn-1', name: null, unavailable: []});
+	});
+
+	test('a key Exa turns down is refused, and nothing saved', async () => {
+		const error = (await connectWithKey({key: 'bad-key'})).unwrapErr();
+
+		expect(error.kind).toBe('credentials_rejected');
+		expect(createConnection).not.toHaveBeenCalled();
+	});
+
+	test("given a connection (`connection`), the key replaces that connection's credential, its name kept", async () => {
+		getConnection.mockResolvedValue(Ok(existing));
+		const connection = (await connectWithKey({connection: 'conn-0', key: 'exa-key-5678'})).unwrap();
+
+		expect(createConnection).not.toHaveBeenCalled();
+		expect(renewConnection.mock.calls[0]?.[0]).toMatchObject({connectionId: 'conn-0', account: 'API key ending 5678', credential: `enc:${JSON.stringify({auth: 'key', key: 'exa-key-5678'})}`});
+		expect(updateConnectionName).not.toHaveBeenCalled();
+		expect(connection).toMatchObject({id: 'conn-0', name: 'Team Exa'});
+	});
+
+	test('a key alone makes a connection with no name of its own, and a key has no spaces', async () => {
+		const connection = (await connectWithKey({key: 'exa-key-9999'})).unwrap();
+		expect(connection).toMatchObject({name: null, account: 'API key ending 9999'});
+		expect((await connectWithKey({key: 'Basic abc'})).unwrapErr().kind).toBe('validation_error');
 	});
 });

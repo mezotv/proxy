@@ -8,7 +8,7 @@ import {GRANOLA, getGranolaAccount} from './granola-mcp';
 export const GRANOLA_MCP: BuiltInMcp = {
 	integrationId: 'granola',
 	server: GRANOLA,
-	account: (signIn) => getGranolaAccount(signIn.credential.accessToken),
+	account: (access) => getGranolaAccount(access.accessToken),
 	defaults: ['readNotes', 'readTranscripts'],
 	tools: {
 		list_meetings: {actions: ['readNotes'], run: () => ({collectionId: 'notes', operation: 'list'})},

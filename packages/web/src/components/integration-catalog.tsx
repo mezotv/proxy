@@ -1,9 +1,13 @@
 import {isOffered, type IntegrationId} from '@proxy/integrations';
+import {useState} from 'react';
 import type {Experiment} from '@proxy/utils';
+import {Badge} from '@proxy/ui/components/badge';
 import {buttonVariants} from '@proxy/ui/components/button';
 import {cn} from '@proxy/ui/lib/utils';
-import {PlusIcon} from 'lucide-react';
+import {KeyRoundIcon, PlusIcon} from 'lucide-react';
 import {IntegrationLogo} from '@/components/brand-logo';
+import {ConnectWithKeyDialog} from '@/components/connect-with-key-dialog';
+import {IconButton} from '@/components/icon-button';
 import {RowList} from '@/components/row-list';
 import {
 	INTEGRATIONS,
@@ -18,7 +22,8 @@ import type {Connection} from '@/lib/types';
 
 // The integrations not connected by signing in to them are connected on a form of their own: a
 // mailbox with an app password, a database with a user's name and password, a custom MCP server by
-// its address.
+// its address. One that also takes an API key, as Exa, Linear and Parallel do, has a key before its plus,
+// which takes the key in a dialog here; its plus is then a link of its own beside the row's.
 
 // The whole row is the link or button; its plus is styled as a ghost icon button that lights up
 // with the row, and dimmed on a row greyed out.
@@ -40,6 +45,7 @@ export function IntegrationCatalog({
 	experiments,
 	returnTo,
 	onConnectForm,
+	onConnected,
 }: {
 	connections: Connection[];
 	configured: Configured;
@@ -48,62 +54,96 @@ export function IntegrationCatalog({
 	returnTo?: 'welcome';
 	// The integration's form, by its id.
 	onConnectForm: (integrationId: IntegrationId) => void;
+	// A connection made here, with an API key.
+	onConnected: (connection: Connection) => void;
 }) {
 	const available = INTEGRATIONS.filter(
 		(integration) => !integration.builtIn && isOffered(integration, {experiments}),
 	);
+	// The integration a key is being typed for, in the dialog.
+	const [keyFor, setKeyFor] = useState<IntegrationId | null>(null);
 
 	return (
-		<RowList>
-			{available.map((integration) => {
-				const count = connections.filter(
-					(connection) => connection.integrationId === integration.id,
-				).length;
-				const signIn = signInPath(integration.id, {returnTo});
-				const unmet =
-					integration.needs && !configured[integration.needs] ? integration.needs : null;
-				const content = (
-					<>
-						<IntegrationLogo
-							integration={integration}
-							className={cn('size-7', unmet && 'opacity-50')}
-						/>
-						<span className="grid min-w-0 flex-1">
-							<span className={cn('truncate', unmet && 'opacity-50')}>{integration.name}</span>
-							<span className={cn('truncate text-sm text-muted-foreground', unmet && 'opacity-50')}>
-								{integration.description}
+		<>
+			{keyFor && (
+				<ConnectWithKeyDialog
+					integrationId={keyFor}
+					onClose={() => setKeyFor(null)}
+					onConnected={onConnected}
+				/>
+			)}
+			<RowList>
+				{available.map((integration) => {
+					const count = connections.filter(
+						(connection) => connection.integrationId === integration.id,
+					).length;
+					const signIn = signInPath(integration.id, {returnTo});
+					const unmet =
+						integration.needs && !configured[integration.needs] ? integration.needs : null;
+					const content = (
+						<>
+							<IntegrationLogo
+								integration={integration}
+								className={cn('size-7', unmet && 'opacity-50')}
+							/>
+							<span className="grid min-w-0 flex-1">
+								<span className="flex items-baseline gap-2">
+									<span className={cn('truncate', unmet && 'opacity-50')}>{integration.name}</span>
+									{count > 0 && (
+										<Badge variant="secondary" className="shrink-0 font-normal tabular-nums">
+											{count} connected
+										</Badge>
+									)}
+								</span>
+								<span
+									className={cn('truncate text-sm text-muted-foreground', unmet && 'opacity-50')}
+								>
+									{integration.description}
+								</span>
+								{unmet && (
+									<span className="text-sm text-muted-foreground">
+										<ServerNeeds need={unmet} />
+									</span>
+								)}
 							</span>
-							{unmet && (
-								<span className="text-sm text-muted-foreground">
-									<ServerNeeds need={unmet} />
+							{!integration.apiKey && (
+								<span className={unmet ? cn(PLUS_BUTTON, 'opacity-50') : PLUS}>
+									<PlusIcon />
 								</span>
 							)}
-						</span>
-						{count > 0 && (
-							<span className="shrink-0 text-muted-foreground tabular-nums">{count} connected</span>
-						)}
-						<span className={unmet ? cn(PLUS_BUTTON, 'opacity-50') : PLUS}>
-							<PlusIcon />
-						</span>
-					</>
-				);
-				return (
-					<li key={integration.id}>
-						{unmet && <div className={ROW}>{content}</div>}
-						{!unmet && signIn && (
-							<a href={signIn} className={ROW}>
-								{content}
-							</a>
-						)}
-						{!unmet && !signIn && (
-							<button type="button" onClick={() => onConnectForm(integration.id)} className={ROW}>
-								{content}
-							</button>
-						)}
-					</li>
-				);
-			})}
-		</RowList>
+						</>
+					);
+					return (
+						<li key={integration.id} className="flex items-center">
+							{unmet && <div className={ROW}>{content}</div>}
+							{!unmet && signIn && (
+								<a href={signIn} className={ROW}>
+									{content}
+								</a>
+							)}
+							{!unmet && !signIn && (
+								<button type="button" onClick={() => onConnectForm(integration.id)} className={ROW}>
+									{content}
+								</button>
+							)}
+							{!unmet && signIn && integration.apiKey && (
+								<span className="flex items-center gap-1 pr-4 md:pr-3">
+									<IconButton
+										label={`Connect ${integration.name} with an API key`}
+										onClick={() => setKeyFor(integration.id)}
+									>
+										<KeyRoundIcon />
+									</IconButton>
+									<IconButton label={`Sign in with ${integration.name}`} href={signIn}>
+										<PlusIcon />
+									</IconButton>
+								</span>
+							)}
+						</li>
+					);
+				})}
+			</RowList>
+		</>
 	);
 }
 

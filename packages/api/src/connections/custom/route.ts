@@ -10,9 +10,9 @@ import {sendResult} from '../../server/response';
 import {requireUserOrgId} from '../../utils/user-org';
 import {builtInForHost} from '../built-in-mcp';
 import {toConnectionResponse, type ConnectionResponse} from '../connection-response';
-import {returnToSchema, saveConnection, signInFlow, type SignInRequest} from '../connect-flow';
+import {connectionNameSchema, returnToSchema, saveConnection, signInFlow, type SignInRequest} from '../connect-flow';
 import {listMcpTools} from '../mcp/mcp-client';
-import {beginBuiltInSignIn, startMcpSignIn} from '../mcp/mcp-connect';
+import {beginBuiltInSignIn, connectWithKey, startMcpSignIn} from '../mcp/mcp-connect';
 import {exchangeMcpCode, mcpEndpoints, mcpEndpointsSchema} from '../mcp/mcp-oauth';
 import {listCustomTools, mcpAccount, readOnlyToolNames, type CustomCredential} from './custom-mcp';
 import {discoverMcpServer, parseMcpServerUrl, probeMcpServer} from './mcp-discovery';
@@ -27,15 +27,14 @@ import {discoverMcpServer, parseMcpServerUrl, probeMcpServer} from './mcp-discov
  * to go to, which comes back to the callback as Granola's does. A new connection lets agents use
  * the tools that only read; the rest are turned on on the connection's page, which can also ask
  * the server for its tools again. A server Personal Agent Proxy has an integration of its own for
- * is connected as that integration instead: the answer is its sign-in, as signing in to it from
- * the catalog begins, which comes back to its callback.
+ * is connected as that integration instead: with the token typed in as its API key, where it takes
+ * one, else the answer is its sign-in, as signing in to it from the catalog begins, which comes
+ * back to its callback.
  */
-
-const MAX_NAME_LENGTH = 80;
 
 // A token is sent as a header, where a line break has no place.
 const connectBodySchema = z.object({
-	name: z.string().trim().min(1, 'Give the connection a name').max(MAX_NAME_LENGTH, `The name can be at most ${MAX_NAME_LENGTH} characters`),
+	name: connectionNameSchema,
 	url: z.string(),
 	token: z
 		.string()
@@ -72,13 +71,18 @@ function connectCustomMcp(request: AuthenticatedRequest, res: Response): Promise
 	return Do(async ($) => {
 		const body = $(parseSchema(connectBodySchema, request.body));
 		const url = $(await parseMcpServerUrl(body.url));
-		// A server of an integration built in is connected as that integration, signed in to as
-		// its catalog's entry is, whatever token was typed in.
+		const token = body.token || null;
+		// A server of an integration built in is connected as that integration: with the token as
+		// its API key, where it takes one, else signed in to as its catalog's entry is.
 		const builtIn = builtInForHost(url.host);
+		if (builtIn && token && builtIn.apiKey) {
+			const orgId = $(await requireUserOrgId(request));
+			const row = $(await connectWithKey(builtIn, orgId, {name: body.name, key: token, connectionId: null}));
+			return {kind: 'connected' as const, connection: toConnectionResponse(row, [])};
+		}
 		if (builtIn) {
 			return {kind: 'signIn' as const, url: $(await beginBuiltInSignIn(builtIn, res, {userId: request.user.userId, returnTo: body.returnTo, name: body.name}))};
 		}
-		const token = body.token || null;
 		const probe = $(await probeMcpServer(url, token));
 		if (probe.kind === 'signIn') {
 			const server = $(await discoverMcpServer(url));

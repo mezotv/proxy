@@ -71,9 +71,14 @@ const mcpOauth = await import('../mcp/mcp-oauth');
 mock.module('../mcp/mcp-oauth', () => ({...mcpOauth, exchangeMcpCode}));
 
 const listMcpTools = mock();
+const callMcpTool = mock();
 
 const mcpClient = await import('../mcp/mcp-client');
-mock.module('../mcp/mcp-client', () => ({...mcpClient, listMcpTools}));
+mock.module('../mcp/mcp-client', () => ({...mcpClient, listMcpTools, callMcpTool}));
+
+// Linear names who a key is for.
+const linearMcp = await import('../linear/linear-mcp');
+mock.module('../linear/linear-mcp', () => ({...linearMcp, getLinearAccount: mock(async () => Ok('alex@example.com · Acme'))}));
 
 const search = {name: 'search_docs', title: 'Search docs', inputSchema: {type: 'object', properties: {query: {type: 'string'}}}, annotations: {readOnlyHint: true}};
 const publish = {name: 'publish_doc', inputSchema: {type: 'object'}};
@@ -239,7 +244,7 @@ describe('handleConnectCustomMcpRoute', () => {
 			['https://search.parallel.ai/mcp', 'parallel', 'https://platform.parallel.ai/getKeys/authorize'],
 			['https://mcp.linear.app/sse', 'linear', 'https://mcp.linear.app/authorize'],
 		] as const) {
-			const res = await connect({name: 'Search', url, token: 'key-1'});
+			const res = await connect({name: 'Search', url});
 			expect(res.sent).toMatchObject({kind: 'signIn'});
 			const signIn = new URL((res.sent as {url: string}).url);
 			expect(signIn.origin + signIn.pathname).toBe(authorize);
@@ -248,6 +253,21 @@ describe('handleConnectCustomMcpRoute', () => {
 		}
 		expect(probeMcpServer).not.toHaveBeenCalled();
 		expect(createConnection).not.toHaveBeenCalled();
+	});
+
+	test("a token typed in for a built-in integration's server connects the integration with it as its API key, under the name given", async () => {
+		callMcpTool.mockResolvedValue(Ok('# Example Domain'));
+		listMcpTools.mockResolvedValue(Ok([]));
+		for (const [url, integrationId, account] of [
+			['https://mcp.exa.ai/mcp', 'exa', 'API key ending 1234'],
+			['https://search.parallel.ai/mcp', 'parallel', 'API key ending 1234'],
+			['https://mcp.linear.app/sse', 'linear', 'alex@example.com · Acme'],
+		] as const) {
+			const res = await connect({name: 'Web search', url, token: 'key-1234'});
+			expect(res.sent).toMatchObject({kind: 'connected', connection: {name: 'Web search', account}});
+			expect(createConnection.mock.calls.at(-1)?.[0]).toMatchObject({integrationId, name: 'Web search', credential: `enc:${JSON.stringify({auth: 'key', key: 'key-1234'})}`});
+		}
+		expect(probeMcpServer).not.toHaveBeenCalled();
 	});
 });
 

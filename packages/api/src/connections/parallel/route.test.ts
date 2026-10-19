@@ -6,16 +6,19 @@ import type {ApiError} from '@proxy/utils';
 const findAccountConnection = mock();
 const createConnection = mock();
 const renewConnection = mock();
+const updateConnectionName = mock();
+
+const getConnection = mock();
 
 mock.module('@proxy/db/connection', () => ({
-	getConnection: mock(),
+	getConnection,
 	findAccountConnection,
 	createConnection,
 	renewConnection,
 	updateConnectionCredential: mock(),
 	getConnectionCredential: mock(async () => Ok(null)),
 	updateConnectionTools: mock(),
-	updateConnectionName: mock(),
+	updateConnectionName,
 }));
 
 const getUserOrgId = mock();
@@ -49,6 +52,13 @@ spyOn(globalThis, 'fetch').mockImplementation((async (input: string | URL | Requ
 	if (url.pathname === '/getKeys/register') {
 		return Response.json({client_id: 'client-1'}, {status: 201});
 	}
+	if (url.host === 'search-mcp.parallel.ai') {
+		// Parallel's server turns a bad key down at the door.
+		if (new Headers(init?.headers).get('authorization') === 'Bearer bad-key') {
+			return new Response('Unauthorized', {status: 401});
+		}
+		return Response.json({jsonrpc: '2.0', id: 1, result: {tools: [{name: 'web_search', inputSchema: {type: 'object'}}]}});
+	}
 	return Response.json({access_token: 'key-1', token_type: 'bearer'});
 }) as typeof fetch);
 
@@ -76,10 +86,10 @@ function makeRes() {
 
 const user = {userId: 'user-1', email: 'alex@example.com'};
 
-async function start() {
+async function start(query: Record<string, string> = {}) {
 	const {handleStart: handleStartParallelRoute} = await routes();
 	const res = makeRes();
-	await handleStartParallelRoute({user, query: {}, headers: {}} as never, res as never);
+	await handleStartParallelRoute({user, query, headers: {}} as never, res as never);
 	const cookie = res.cookies.find((candidate) => candidate.name === 'proxy.parallel-state');
 	const authorizeUrl = new URL(res.redirect.mock.calls[0]?.[0] as string);
 	return {cookie, authorizeUrl, state: authorizeUrl.searchParams.get('state') ?? ''};
@@ -92,12 +102,24 @@ async function callback(args: {cookie: string; query: Record<string, string>}) {
 	return res;
 }
 
+// What a connection made with a key answers, from what was saved.
+async function connectWithKey(body: unknown) {
+	const {keyConnectRoute} = await import('../mcp/mcp-connect');
+	const {PARALLEL_MCP} = await import('./route');
+	return keyConnectRoute(PARALLEL_MCP)({user, body} as never);
+}
+
+const existing = {id: 'conn-0', integrationId: 'parallel', account: 'Signed in', createdAt: new Date('2026-10-01T00:00:00Z'), tools: null, name: 'Team Parallel', defaults: [{actionId: 'search'}]};
+
 beforeEach(() => {
 	mock.clearAllMocks();
 	parallel.requests = [];
 	getUserOrgId.mockResolvedValue(Ok('org-1'));
 	findAccountConnection.mockResolvedValue(Ok(null));
-	createConnection.mockResolvedValue(Ok({id: 'conn-1'}));
+	createConnection.mockImplementation(async (data: {integrationId: string; account: string; defaults: string[]; name?: string}) =>
+		Ok({id: 'conn-1', integrationId: data.integrationId, account: data.account, createdAt: new Date(), tools: null, name: data.name ?? null, defaults: data.defaults.map((actionId) => ({actionId}))}),
+	);
+	getConnection.mockResolvedValue(Ok(null));
 	renewConnection.mockResolvedValue(Ok(undefined));
 });
 
@@ -123,18 +145,28 @@ describe('handleParallelCallbackRoute', () => {
 
 		expect(parallel.requests.at(-1)?.url.href).toBe('https://platform.parallel.ai/getKeys/token');
 		const created = createConnection.mock.calls[0]?.[0];
-		expect(created).toMatchObject({orgId: 'org-1', integrationId: 'parallel', account: 'Parallel', defaults: ['search', 'fetch']});
+		expect(created).toMatchObject({orgId: 'org-1', integrationId: 'parallel', account: 'Signed in', defaults: ['search', 'fetch']});
 		expect(JSON.parse(String(created.credential).replace(/^enc:/, ''))).toMatchObject({clientId: 'client-1', refreshToken: null, expiresAt: null});
 		expect(res.redirect).toHaveBeenCalledWith('https://app.example.com/connections/conn-1?added');
 	});
 
-	test('signing in again, with any account, gives the connection the new tokens', async () => {
-		findAccountConnection.mockResolvedValue(Ok({id: 'conn-0'}));
+	test('signing in from the catalog again makes another connection, since Parallel says nothing of who signed in', async () => {
 		const {cookie, state} = await start();
+		await callback({cookie: cookie?.value ?? '', query: {state, code: 'code-1'}});
+
+		expect(findAccountConnection).not.toHaveBeenCalled();
+		expect(createConnection).toHaveBeenCalledTimes(1);
+	});
+
+	test("begun from a connection's page (`?connection=`), the sign-in gives that connection the new tokens, its name kept", async () => {
+		getConnection.mockResolvedValue(Ok(existing));
+		const {cookie, state} = await start({connection: 'conn-0'});
 		const res = await callback({cookie: cookie?.value ?? '', query: {state, code: 'code-1'}});
 
+		expect(getConnection).toHaveBeenCalledWith('org-1', 'conn-0');
 		expect(createConnection).not.toHaveBeenCalled();
-		expect(renewConnection.mock.calls[0]?.[0]).toMatchObject({connectionId: 'conn-0'});
+		expect(renewConnection.mock.calls[0]?.[0]).toMatchObject({connectionId: 'conn-0', account: 'Signed in'});
+		expect(updateConnectionName).not.toHaveBeenCalled();
 		expect(res.redirect).toHaveBeenCalledWith('https://app.example.com/connections/conn-0');
 	});
 
@@ -144,5 +176,42 @@ describe('handleParallelCallbackRoute', () => {
 
 		expect(res.redirect).toHaveBeenCalledWith('https://app.example.com/connections/new?error=parallel');
 		expect(createConnection).not.toHaveBeenCalled();
+	});
+});
+
+describe('keyConnectRoute', () => {
+	test('connects with an API key, checked by listing the tools with it: the key its credential, its end its account', async () => {
+		const connection = (await connectWithKey({key: 'pk-1234'})).unwrap();
+
+		expect(parallel.requests.at(-1)?.url.href).toBe('https://search-mcp.parallel.ai/mcp');
+		expect(JSON.parse(parallel.requests.at(-1)?.body ?? '{}')).toMatchObject({method: 'tools/list'});
+		const created = createConnection.mock.calls[0]?.[0];
+		expect(created).toMatchObject({orgId: 'org-1', integrationId: 'parallel', account: 'API key ending 1234', defaults: ['search', 'fetch']});
+		expect(created.name).toBeUndefined();
+		expect(JSON.parse(String(created.credential).replace(/^enc:/, ''))).toEqual({auth: 'key', key: 'pk-1234'});
+		expect(connection).toMatchObject({id: 'conn-1', name: null, unavailable: []});
+	});
+
+	test('a key Parallel turns down is refused, and nothing saved', async () => {
+		const error = (await connectWithKey({key: 'bad-key'})).unwrapErr();
+
+		expect(error.kind).toBe('credentials_rejected');
+		expect(createConnection).not.toHaveBeenCalled();
+	});
+
+	test("given a connection (`connection`), the key replaces that connection's credential, its name kept", async () => {
+		getConnection.mockResolvedValue(Ok(existing));
+		const connection = (await connectWithKey({connection: 'conn-0', key: 'pk-5678'})).unwrap();
+
+		expect(createConnection).not.toHaveBeenCalled();
+		expect(renewConnection.mock.calls[0]?.[0]).toMatchObject({connectionId: 'conn-0', account: 'API key ending 5678', credential: `enc:${JSON.stringify({auth: 'key', key: 'pk-5678'})}`});
+		expect(updateConnectionName).not.toHaveBeenCalled();
+		expect(connection).toMatchObject({id: 'conn-0', name: 'Team Parallel'});
+	});
+
+	test('a key alone makes a connection with no name of its own, and a key has no spaces', async () => {
+		const connection = (await connectWithKey({key: 'pk-9999'})).unwrap();
+		expect(connection).toMatchObject({name: null, account: 'API key ending 9999'});
+		expect((await connectWithKey({key: 'Basic abc'})).unwrapErr().kind).toBe('validation_error');
 	});
 });

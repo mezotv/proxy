@@ -23,6 +23,10 @@ const listCollectionEntries = mock();
 
 mock.module('@proxy/db/audit', () => ({listCollectionEntries}));
 
+// Linear names who a key is for.
+const linearMcp = await import('./linear/linear-mcp');
+mock.module('./linear/linear-mcp', () => ({...linearMcp, getLinearAccount: mock(async () => Ok('alex@example.com · Acme'))}));
+
 mock.module('../observability/log', () => ({
 	log: {debug: mock(), info: mock(), warn: mock(), error: mock()},
 	serializeError: mock(() => ({})),
@@ -146,8 +150,14 @@ describe('movedCredential', () => {
 		});
 	});
 
-	test('a token typed in, none, or a sign-in through another authorization server has to be signed in to again', () => {
-		expect(movedCredential(EXA_MCP, stored({auth: 'token', url: 'https://mcp.exa.ai/mcp', token: 'key-1'}))).toBeNull();
+	test("a token typed in becomes the integration's API key, where it takes one and the token is a bare one", () => {
+		expect(movedCredential(EXA_MCP, stored({auth: 'token', url: 'https://mcp.exa.ai/mcp', token: 'key-1'}))).toEqual({auth: 'key', key: 'key-1'});
+		expect(movedCredential(PARALLEL_MCP, stored({auth: 'token', url: 'https://search.parallel.ai/mcp', token: 'pk_1'}))).toEqual({auth: 'key', key: 'pk_1'});
+		expect(movedCredential(LINEAR_MCP, stored({auth: 'token', url: 'https://mcp.linear.app/mcp', token: 'lin_api_1'}))).toEqual({auth: 'key', key: 'lin_api_1'});
+		expect(movedCredential(EXA_MCP, stored({auth: 'token', url: 'https://mcp.exa.ai/mcp', token: 'Basic abc'}))).toBeNull();
+	});
+
+	test('no token, or a sign-in through another authorization server, has to be signed in to again', () => {
 		expect(movedCredential(PARALLEL_MCP, stored({auth: 'none', url: 'https://search.parallel.ai/mcp'}))).toBeNull();
 		expect(movedCredential(EXA_MCP, stored({...EXA_SIGN_IN, server: {...EXA_SIGN_IN.server, tokenUrl: 'https://elsewhere.example.com/token'}}))).toBeNull();
 		expect(movedCredential(LINEAR_MCP, stored({...EXA_SIGN_IN, url: 'https://mcp.linear.app/sse'}))).toBeNull();
@@ -176,7 +186,8 @@ describe('takeOverCustomConnections', () => {
 		listCustomMcpConnections.mockResolvedValue(
 			Ok([
 				customRow('mcp-exa', 'mcp.exa.ai/mcp', EXA_SIGN_IN, ['web_search_exa', 'web_fetch_exa', 'agent_run'], ['web_search_exa', 'agent_run']),
-				customRow('mcp-parallel', 'search.parallel.ai/mcp', {auth: 'none', url: 'https://search.parallel.ai/mcp'}, ['web_search', 'web_fetch'], ['web_search', 'web_fetch']),
+				customRow('mcp-parallel', 'search.parallel.ai/mcp', {auth: 'token', url: 'https://search.parallel.ai/mcp', token: 'pk_5678'}, ['web_search', 'web_fetch'], ['web_search', 'web_fetch']),
+				customRow('mcp-keyless', 'search.parallel.ai/mcp', {auth: 'none', url: 'https://search.parallel.ai/mcp'}, ['web_search'], ['web_search']),
 				customRow('mcp-docs', 'mcp.example.com/mcp', {auth: 'none', url: 'https://mcp.example.com/mcp'}, ['web_search'], ['web_search']),
 			]),
 		);
@@ -198,7 +209,7 @@ describe('takeOverCustomConnections', () => {
 			{
 				connectionId: 'mcp-exa',
 				integrationId: 'exa',
-				account: 'Exa',
+				account: 'Signed in',
 				credential: stored({clientId: 'client-1', accessToken: 'access-1', refreshToken: 'refresh-1', expiresAt: null}),
 				defaults: ['search'],
 				grants: [],
@@ -207,9 +218,18 @@ describe('takeOverCustomConnections', () => {
 			{
 				connectionId: 'mcp-parallel',
 				integrationId: 'parallel',
+				account: 'API key ending 5678',
+				credential: stored({auth: 'key', key: 'pk_5678'}),
+				defaults: ['search', 'fetch'],
+				grants: [],
+				runs: [],
+			},
+			{
+				connectionId: 'mcp-keyless',
+				integrationId: 'parallel',
 				account: 'search.parallel.ai/mcp',
 				credential: null,
-				defaults: ['search', 'fetch'],
+				defaults: ['search'],
 				grants: [],
 				runs: [],
 			},
@@ -228,6 +248,12 @@ describe('takeOverCustomConnections', () => {
 		await takeOverCustomConnections();
 
 		expect(takeOverConnection).toHaveBeenCalledTimes(2);
-		expect(takeOverConnection.mock.calls[1]?.[0]).toMatchObject({connectionId: 'mcp-linear', integrationId: 'linear', credential: null, defaults: ['read']});
+		expect(takeOverConnection.mock.calls[1]?.[0]).toMatchObject({
+			connectionId: 'mcp-linear',
+			integrationId: 'linear',
+			account: 'alex@example.com · Acme',
+			credential: stored({auth: 'key', key: 'lin_api_1'}),
+			defaults: ['read'],
+		});
 	});
 });

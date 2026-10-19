@@ -24,13 +24,15 @@ import {requireUserOrgId} from '../utils/user-org';
  * `/api/connections/<integration>`, for a provider known in advance (`signInRoutes`), or from the
  * answer of the route that found it, as a custom server's connect route (`signInFlow`). The
  * callback checks the provider's answer against the cookie, trades the code for tokens and makes
- * the connection, or gives an existing one of the same account its new tokens, which is how
- * signing in again works, or the one it was begun from (`?connection=`), as a connection's page
- * begins it, whatever account it is for now, and ends on the connection's page, or back on the catalog with
- * `?error=<integration>` (with `?error=<integration>-unconfigured` when the server lacks what the
- * sign-in needs, such as Google's client); a sign-in begun from the welcome flow (`returnTo: 'welcome'`) ends on its
- * page for the connection, or its catalog, instead. What the provider's sign-in page is and how a
- * code becomes tokens and a connection is the integration's.
+ * the connection, or gives an existing one its new tokens, which is how signing in again works:
+ * the one the sign-in was begun from (`?connection=`), as a connection's page begins it, else one
+ * of the same account, unless the provider said nothing of who signed in (`anonymous`), so only a
+ * connection's own page renews it. The callback ends on the connection's page, or back on the
+ * catalog with `?error=<integration>`
+ * (with `?error=<integration>-unconfigured` when the server lacks what the sign-in needs, such as
+ * Google's client); a sign-in begun from the welcome flow (`returnTo: 'welcome'`) ends on its page
+ * for the connection, or its catalog, instead. What the provider's sign-in page is and how a code
+ * becomes tokens and a connection is the integration's.
  */
 
 const stateCookieMaxAgeMs = 15 * 60 * 1000;
@@ -41,6 +43,9 @@ export const returnToSchema = z.enum(['welcome']);
 type ReturnTo = z.infer<typeof returnToSchema>;
 
 type Route = (request: AuthenticatedRequest, res: Response) => Promise<void>;
+
+/** What a connection the person names is called, as the custom MCP form's is. */
+export const connectionNameSchema = z.string().trim().min(1, 'Give the connection a name').max(80, 'The name can be at most 80 characters');
 
 /**
  * What the provider's sign-in is sent: where it comes back to, the state, the PKCE challenge, and
@@ -59,9 +64,10 @@ type SignInAnswer<E> = {redirectUri: string; code: string; verifier: string; kep
  * A connection to save: the account it shows, the provider's own id for it where it gives one,
  * which stays as the account's address changes (Google's `sub`), its credential, stored encrypted,
  * the actions agents get with a new one, and a custom MCP server's tools and the name the person
- * gave it.
+ * gave it. `anonymous` where the provider said nothing of who signed in, as Exa and Parallel
+ * don't: the account is only a label, so no existing connection is the same account's.
  */
-export type Connected<C> = {account: string; accountId?: string; credential: C; defaults: string[]; tools?: McpTool[]; name?: string};
+export type Connected<C> = {account: string; accountId?: string; credential: C; defaults: string[]; tools?: McpTool[]; name?: string; anonymous?: true};
 
 /** A PKCE verifier and the challenge the provider is sent in its place. */
 function makePkce(): {verifier: string; challenge: string} {
@@ -70,11 +76,13 @@ function makePkce(): {verifier: string; challenge: string} {
 }
 
 // The connection a sign-in was begun from, while it is still the organization's and the
-// integration's; else the one of the same account, if there is one.
+// integration's; else the one of the same account, if there is one, unless the provider said
+// nothing of who signed in (`anonymous`): those can't be told apart, so only the one begun from is
+// renewed.
 function connectionToRenew(
 	orgId: string,
 	integrationId: IntegrationId,
-	connected: {account: string; providerAccountId: string | null},
+	connected: {account: string; providerAccountId: string | null; anonymous: boolean},
 	connectionId: string | null,
 ): Promise<Result<ConnectionRow | null, ApiError>> {
 	return Do(async ($) => {
@@ -82,15 +90,18 @@ function connectionToRenew(
 		if (begunFrom?.integrationId === integrationId) {
 			return begunFrom;
 		}
-		return $(await findAccountConnection({orgId, integrationId, ...connected}));
+		if (connected.anonymous) {
+			return null;
+		}
+		const {account, providerAccountId} = connected;
+		return $(await findAccountConnection({orgId, integrationId, account, providerAccountId}));
 	});
 }
 
 /**
- * Saves a connection: a new one, or an existing one, the one the sign-in was begun from or else
- * one of the same account, given the new credential and the account as the provider names it now,
- * such as an address changed since, and the tools and the name, where it has its own; `added`
- * unless it was already there.
+ * Saves a connection: a new one, or an existing one (`connectionToRenew`), given the new credential
+ * and the account as the provider names it now, such as an address changed since, and the tools
+ * and the name, where it has its own; `added` unless it was already there.
  */
 export function saveConnection<C>(
 	orgId: string,
@@ -103,7 +114,7 @@ export function saveConnection<C>(
 		const encrypted = $(encryptSecret(JSON.stringify(connected.credential)));
 		const providerAccountId = connected.accountId ?? null;
 		const name = connected.name === undefined ? {} : {name: connected.name};
-		const existing = $(await connectionToRenew(orgId, integrationId, {account, providerAccountId}, connectionId));
+		const existing = $(await connectionToRenew(orgId, integrationId, {account, providerAccountId, anonymous: connected.anonymous === true}, connectionId));
 		if (!existing) {
 			const listed = tools === undefined ? {} : {tools: JSON.stringify(tools)};
 			return {row: $(await createConnection({orgId, integrationId, account, providerAccountId, credential: encrypted, defaults: connected.defaults, ...listed, ...name})), added: true};

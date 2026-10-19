@@ -18,7 +18,8 @@ export const EXA: McpServer = {
 	authorizeUrl: `${AUTH_BASE}/oauth/authorize`,
 	tokenUrl: `${AUTH_BASE}/api/oauth/token`,
 	scope: 'mcp:tools',
-	toolError: (text) => ApiErr.validationError(`Exa turned it down: ${text.trim() || 'it didn’t say why'}`),
+	// A key Exa turns down fails the call, not the request: "web_search_exa error (401): Invalid API key."
+	toolError: (text) => (/\(401\)|invalid api key/i.test(text) ? ApiErr.credentialsRejected() : ApiErr.validationError(`Exa turned it down: ${text.trim() || 'it didn’t say why'}`)),
 };
 
 const PAGE_HEADING = /^# (.*)\nURL: .*\n+/;

@@ -60,6 +60,13 @@ spyOn(globalThis, 'fetch').mockImplementation((async (input: string | URL | Requ
 	if (url.pathname === '/token') {
 		return Response.json({access_token: 'access-1', refresh_token: 'refresh-1', expires_in: 86399, token_type: 'bearer'});
 	}
+	// The MCP server turns a bad key down at the door.
+	if (new Headers(init?.headers).get('authorization') === 'Bearer bad-key') {
+		return new Response('Unauthorized', {status: 401});
+	}
+	if (JSON.parse(body).method === 'tools/list') {
+		return Response.json({jsonrpc: '2.0', id: 1, result: {tools: [{name: 'list_issues', inputSchema: {type: 'object'}}]}});
+	}
 	if (JSON.parse(body).params?.name === 'get_workspace') {
 		return toolAnswer({id: 'ws-1', name: 'Acme', url: 'https://linear.app/acme'});
 	}
@@ -182,6 +189,36 @@ describe('handleLinearCallbackRoute', () => {
 		const res = await callback({cookie: cookie?.value ?? '', query: {state, error: 'access_denied'}});
 
 		expect(res.redirect).toHaveBeenCalledWith('https://app.example.com/connections/new?error=linear');
+		expect(createConnection).not.toHaveBeenCalled();
+	});
+});
+
+describe('keyConnectRoute', () => {
+	async function connectWithKey(body: unknown) {
+		const {keyConnectRoute} = await import('../mcp/mcp-connect');
+		const {LINEAR_MCP} = await import('./route');
+		return keyConnectRoute(LINEAR_MCP)({user, body} as never);
+	}
+
+	test('connects with an API key, checked by listing the tools with it: the connection for who the key is, the key its credential', async () => {
+		createConnection.mockImplementation(async (data: {integrationId: string; account: string; defaults: string[]}) =>
+			Ok({id: 'conn-1', integrationId: data.integrationId, account: data.account, createdAt: new Date(), tools: null, name: null, defaults: data.defaults.map((actionId) => ({actionId}))}),
+		);
+		const connection = (await connectWithKey({key: 'lin_api_1234'})).unwrap();
+
+		const calls = linear.requests.filter((request) => request.url.pathname === '/mcp');
+		expect(calls.map((call) => call.headers.get('authorization'))).toEqual(['Bearer lin_api_1234', 'Bearer lin_api_1234', 'Bearer lin_api_1234']);
+		expect(calls.map((call) => JSON.parse(call.body).method)).toEqual(['tools/list', 'tools/call', 'tools/call']);
+		// The same account a sign-in would find: a key for it renews its connection.
+		expect(findAccountConnection).toHaveBeenCalledWith({orgId: 'org-1', integrationId: 'linear', account: 'alex@example.com · Acme', providerAccountId: null});
+		const created = createConnection.mock.calls[0]?.[0];
+		expect(created).toMatchObject({integrationId: 'linear', account: 'alex@example.com · Acme', defaults: ['read']});
+		expect(JSON.parse(String(created.credential).replace(/^enc:/, ''))).toEqual({auth: 'key', key: 'lin_api_1234'});
+		expect(connection).toMatchObject({id: 'conn-1', account: 'alex@example.com · Acme'});
+	});
+
+	test('a key Linear turns down is refused, and nothing saved', async () => {
+		expect((await connectWithKey({key: 'bad-key'})).unwrapErr().kind).toBe('credentials_rejected');
 		expect(createConnection).not.toHaveBeenCalled();
 	});
 });
