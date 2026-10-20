@@ -30,16 +30,17 @@ import {requireUserOrgId} from '../utils/user-org';
  * that page renews it. The callback ends on the connection's page, or back on the catalog with
  * `?error=<integration>` (with `?error=<integration>-unconfigured` when the server lacks what the
  * sign-in needs, such as Google's client); a sign-in begun from the welcome flow
- * (`returnTo: 'welcome'`) ends on its page for the connection, or its catalog, instead. What the
+ * (`returnTo: 'welcome'`) ends on its page for the connection, or its catalog, instead, and one
+ * begun from a home page widget's card (`returnTo: 'home'`) back on the home page. What the
  * provider's sign-in page is and how a code becomes tokens and a connection is the integration's.
  */
 
 const stateCookieMaxAgeMs = 15 * 60 * 1000;
 
-/** Where a sign-in ends when not on the connection's page: the welcome flow it began from. */
-export const returnToSchema = z.enum(['welcome']);
+/** Where a sign-in ends when not on the connection's page: the welcome flow or the home page it began from. */
+export const returnToSchema = z.enum(['welcome', 'home']);
 
-type ReturnTo = z.infer<typeof returnToSchema>;
+export type ReturnTo = z.infer<typeof returnToSchema>;
 
 type Route = (request: AuthenticatedRequest, res: Response) => Promise<void>;
 
@@ -256,6 +257,10 @@ export function signInFlow<E, C>(args: SignInArgs<E, C>) {
 		const {id, added} = finished.value;
 		if (returnTo === 'welcome') {
 			res.redirect(`${appUrl}/welcome/connections/${id}`);
+			return;
+		}
+		if (returnTo === 'home') {
+			res.redirect(`${appUrl}/`);
 			return;
 		}
 		res.redirect(`${appUrl}/connections/${id}${added ? '?added' : ''}`);

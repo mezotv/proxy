@@ -82,7 +82,8 @@ export function integrationOf(connection: {
 // sign-in starts at `/api/connections/<id>/start`: the api sends the browser on to the service,
 // and back to the new connection, or to the catalog with `?error=<id>` when it didn't finish, or
 // with `?error=<id>-unconfigured` when the server lacks what it needs. Started with
-// `?returnTo=welcome`, it comes back to the welcome flow's page for the connection, or its catalog;
+// `?returnTo=welcome`, it comes back to the welcome flow's page for the connection, or its catalog,
+// and with `?returnTo=home`, from a home page widget, to the home page;
 // with `?account=`, as signing in again from a connection does, the service opens on that account
 // where it can, and with `?connection=` the sign-in renews that connection where its account can't
 // be told apart from another's: the integration says nothing of who signed in (`anonymous`), or
@@ -91,7 +92,7 @@ export function integrationOf(connection: {
 /** Where signing in to an integration starts, or null for one connected on a form of its own. */
 export function signInPath(
 	integrationId: string,
-	query: {returnTo?: 'welcome'; account?: string; connection?: string} = {},
+	query: {returnTo?: 'welcome' | 'home'; account?: string; connection?: string} = {},
 ): string | null {
 	if (!findIntegration(integrationId)?.signIn) {
 		return null;

@@ -1,6 +1,6 @@
 import express from 'express';
 
-import {handleListActivityRoute} from '../activity/route';
+import {handleActivitySummaryRoute, handleListActivityRoute} from '../activity/route';
 import {handleAgentLoginRoute, handleAgentLogoutRoute} from '../agent-auth/session';
 import {handleAgentFeedbackRoute, handleAgentListToolsRoute, handleAgentMeRoute, handleAgentRunToolRoute} from '../agent-side/route';
 import {
@@ -27,6 +27,7 @@ import {handleConnectMysqlRoute, handleTestMysqlRoute} from '../connections/mysq
 import {handleConnectPlaidRoute, handleCreatePlaidLinkTokenRoute} from '../connections/plaid/route';
 import {handleConnectPostgresRoute, handleTestPostgresRoute} from '../connections/postgres/route';
 import {handleDeleteConnectionRoute, handleGetConnectionRoute, handleListConnectionsRoute, handleRenameConnectionRoute, handleSetConnectionDefaultsRoute} from '../connections/route';
+import {handleFillIntentRoute, handlePickIntentRoute} from '../intent/route';
 import {handleMcpMethodNotAllowedRoute, handleMcpRoute} from '../mcp/route';
 import {handleDeleteMeRoute, handleFinishOnboardingRoute, handleMeRoute} from '../me/route';
 import {handleAuthorizeRoute, handleConsentRoute, handleGetAuthorizationRequestRoute} from '../oauth/authorize';
@@ -34,6 +35,14 @@ import {handleAuthorizationServerMetadataRoute, handleProtectedResourceMetadataR
 import {handleRegisterClientRoute} from '../oauth/register';
 import {handleTokenRoute} from '../oauth/token';
 import {handleCreateRecordRoute, handleDeleteRecordRoute, handleGetRecordRoute, handleListRecordsRoute, handleUpdateRecordRoute} from '../records/route';
+import {handleAgendaRoute, handleFindEventsRoute} from '../widgets/agenda';
+import {handleBankAccountsRoute, handleBankTransactionsRoute} from '../widgets/bank';
+import {handleEditEventRoute} from '../widgets/edit-event';
+import {handleFindEmailsRoute, handleMailboxesRoute, handleWriteEmailRoute} from '../widgets/emails';
+import {handleFindFilesRoute} from '../widgets/files';
+import {handleCreateEventRoute} from '../widgets/new-event';
+import {handlePeopleRoute} from '../widgets/people';
+import {handleRatesRoute} from '../widgets/rates';
 import {allowAnyOrigin} from './middleware/allow-any-origin';
 import {requireBrowserOrigin} from './middleware/require-browser-origin';
 import {withAgentAuthResult} from './middleware/require-agent';
@@ -112,6 +121,27 @@ export function createApiRouter(): express.Router {
 
 	router.use('/api/activity', requireBrowserOrigin);
 	router.get('/api/activity', withAuthResult('List activity route', handleListActivityRoute));
+	router.get('/api/activity/summary', withAuthResult('Activity summary route', handleActivitySummaryRoute));
+
+	// The home page: which widget fits what the person types, then its fields filled in.
+	router.use('/api/intent', requireBrowserOrigin);
+	router.post('/api/intent', withAuthResult('Pick intent route', handlePickIntentRoute));
+	router.post('/api/intent/fields', withAuthResult('Fill intent route', handleFillIntentRoute));
+	// Its widgets: every connection with the collection a widget is about, read at once, and
+	// written to as the person picks.
+	router.use('/api/widgets', requireBrowserOrigin);
+	router.get('/api/widgets/people', withAuthResult('Widget people route', handlePeopleRoute));
+	router.get('/api/widgets/agenda', withAuthResult('Widget agenda route', handleAgendaRoute));
+	router.get('/api/widgets/events', withAuthResult('Widget find events route', handleFindEventsRoute));
+	router.post('/api/widgets/events', withAuthResult('Widget create event route', handleCreateEventRoute));
+	router.put('/api/widgets/events', withAuthResult('Widget edit event route', handleEditEventRoute));
+	router.get('/api/widgets/emails', withAuthResult('Widget find emails route', handleFindEmailsRoute));
+	router.post('/api/widgets/emails', withAuthResult('Widget write email route', handleWriteEmailRoute));
+	router.get('/api/widgets/mailboxes', withAuthResult('Widget mailboxes route', handleMailboxesRoute));
+	router.get('/api/widgets/files', withAuthResult('Widget find files route', handleFindFilesRoute));
+	router.get('/api/widgets/rates', withAuthResult('Widget exchange rates route', handleRatesRoute));
+	router.get('/api/widgets/accounts', withAuthResult('Widget bank accounts route', handleBankAccountsRoute));
+	router.get('/api/widgets/transactions', withAuthResult('Widget bank transactions route', handleBankTransactionsRoute));
 
 	// The agent side: its own sign-in and cookie, and every request checked against the agent's
 	// access and logged.

@@ -8,7 +8,7 @@ import type {ConnectionRow} from '@proxy/db/connection';
 import type {AuthenticatedRequest} from '../../server/middleware/require-auth';
 import {requireUserOrgId} from '../../utils/user-org';
 import {toConnectionResponse, type ConnectionResponse} from '../connection-response';
-import {saveConnection, signInFlow, signInRoutes, type Connected, type SignInRequest} from '../connect-flow';
+import {saveConnection, signInFlow, signInRoutes, type Connected, type ReturnTo, type SignInRequest} from '../connect-flow';
 import type {BuiltInMcp, McpAccess} from './built-in';
 import {exchangeMcpCode, mcpAuthorizeUrl, registerMcpClient, type McpCredential, type McpServer} from './mcp-oauth';
 import type {McpKeyCredential} from './mcp-session';
@@ -80,7 +80,7 @@ export function mcpConnectRoutes(builtIn: BuiltInMcp) {
  * integration's own server, the connection called `name`; its sign-in page, for the browser to go
  * to, which comes back to the integration's callback.
  */
-export function beginBuiltInSignIn(builtIn: BuiltInMcp, res: Response, begin: {userId: string; returnTo: 'welcome' | undefined; name: string}): Promise<Result<string, ApiError>> {
+export function beginBuiltInSignIn(builtIn: BuiltInMcp, res: Response, begin: {userId: string; returnTo: ReturnTo | undefined; name: string}): Promise<Result<string, ApiError>> {
 	return signInFlow(builtInSignIn(builtIn)).beginSignIn(res, {
 		userId: begin.userId,
 		returnTo: begin.returnTo,

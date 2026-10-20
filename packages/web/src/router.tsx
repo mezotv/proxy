@@ -16,6 +16,7 @@ import {
 	connectAgentLoader,
 	connectionLoader,
 	connectionsLoader,
+	homeLoader,
 	infoLoader,
 	welcomeConnectionLoader,
 	welcomeLoader,
@@ -39,6 +40,7 @@ import {AgentToolPage} from '@/pages/agent/agent-tool-page';
 import {ConnectAgentPage} from '@/pages/connect-agent-page';
 import {ConnectionPage} from '@/pages/connection-page';
 import {ConnectionsPage} from '@/pages/connections-page';
+import {HomePage} from '@/pages/home-page';
 import {InfoPage} from '@/pages/info-page';
 import {LoginPage} from '@/pages/login-page';
 import {NewAgentPage} from '@/pages/new-agent-page';
@@ -50,7 +52,7 @@ import {WelcomeConnectionPage, WelcomePage} from '@/pages/welcome-page';
 async function humanLoader() {
 	const me = unwrapLoaderResult(await getMe());
 	if (!me.onboarded) {
-		throw redirect('/welcome');
+		throw redirect('/welcome/connections');
 	}
 	return me;
 }
@@ -77,14 +79,8 @@ export const router = createBrowserRouter([
 		element: <ConnectAgentPage />,
 		errorElement: <RouteError />,
 	},
-	// The welcome flow: the person's agent, then their connections, before the app itself. A
+	// The welcome flow: the person's connections, then their agent, before the app itself. A
 	// connection made in it gets a page of its own, for its permissions.
-	{
-		path: '/welcome',
-		loader: welcomeLoader,
-		element: <WelcomePage step="agent" />,
-		errorElement: <RouteError />,
-	},
 	{
 		path: '/welcome/connections',
 		loader: welcomeLoader,
@@ -128,6 +124,12 @@ export const router = createBrowserRouter([
 		errorElement: <RouteError />,
 	},
 	{
+		path: '/welcome/agent',
+		loader: welcomeLoader,
+		element: <WelcomePage step="agent" />,
+		errorElement: <RouteError />,
+	},
+	{
 		id: 'human',
 		loader: humanLoader,
 		// Once per page load: the session is checked on arrival, not on every click.
@@ -135,7 +137,7 @@ export const router = createBrowserRouter([
 		element: <HumanSide />,
 		errorElement: <RouteError />,
 		children: [
-			{path: '/', element: <Navigate to="/connections" replace />},
+			{path: '/', loader: homeLoader, element: <HomePage />},
 			{path: '/connections', loader: connectionsLoader, element: <ConnectionsPage />},
 			{path: '/connections/new', loader: addConnectionLoader, element: <AddConnectionPage />},
 			{path: '/connections/new/email', element: <AddEmailPage />},

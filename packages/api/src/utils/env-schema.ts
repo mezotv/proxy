@@ -99,6 +99,17 @@ export const envSchema = z.object({
 		description: 'Which of Plaid’s environments to use: `sandbox` connects only Plaid’s test banks, signed in to with `user_good` and `pass_good`.',
 	}),
 
+	TYPESAFE_API_KEY: documented(z.string().min(1).optional(), {
+		group: 'Core',
+		description:
+			'A TypeSafe AI API key, for Jev, which picks the widget on the home page that fits what a person types. What is typed there is sent to it. Without it, or without `OPENROUTER_KEY`, the home page says it is not set up; everything else works as before.',
+	}),
+	OPENROUTER_KEY: documented(z.string().min(1).optional(), {
+		group: 'Core',
+		description:
+			'An OpenRouter API key, for the model that fills in the fields of the widget Jev picks on the home page (gpt-oss-120b, on Cerebras or Groq). What is typed there is sent to it. Without it, or without `TYPESAFE_API_KEY`, the home page says it is not set up; everything else works as before.',
+	}),
+
 	NODE_ENV: documented(z.enum(['development', 'test', 'production']).default('production'), {
 		group: 'Deployment',
 		description: '`development` turns on the dev-only sign-in and logs magic links instead of sending them. Only `bun run dev` sets it.',
