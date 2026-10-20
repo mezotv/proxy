@@ -7,6 +7,7 @@ import {granolaConnector} from './granola-connector';
 import {infoConnector} from './info-connector';
 import {linearConnector} from './linear-connector';
 import {notionConnector} from './notion-connector';
+import {notraConnector} from './notra-connector';
 import {plaidConnector} from './plaid-connector';
 import {sqlConnector} from './sql-connector';
 import {exaConnector, parallelConnector} from './web-connector';
@@ -20,6 +21,7 @@ const CONNECTORS: Record<Exclude<IntegrationId, 'mcp'>, Connector> = {
 	linear: linearConnector,
 	exa: exaConnector,
 	parallel: parallelConnector,
+	notra: notraConnector,
 	postgres: sqlConnector('postgres'),
 	mysql: sqlConnector('mysql'),
 	google: googleConnector,

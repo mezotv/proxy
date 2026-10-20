@@ -554,6 +554,118 @@ const parallel = webIntegration(
 	'https://platform.parallel.ai',
 );
 
+// The kinds of post Notra makes, by its own names for them, as a post's type is written.
+export const NOTRA_CONTENT_TYPES: Record<string, string> = {
+	blog_post: 'Blog post',
+	changelog: 'Changelog',
+	linkedin_post: 'LinkedIn post',
+	twitter_post: 'X post',
+	investor_update: 'Investor update',
+	image: 'Image',
+};
+
+// The kinds a post can be made as: investor updates and images are only ever generated in Notra.
+export const NOTRA_CREATABLE_TYPES = ['Blog post', 'Changelog', 'LinkedIn post', 'X post'];
+
+// A Notra workspace's posts, through Notra's MCP server, signed in to or given one of its API
+// keys: blog posts, changelogs and social posts, written as Markdown. A post is made as a draft
+// and only reaches anyone once published, on the workspace's hosted site, its linked GitHub pull
+// request or wherever it was scheduled, so publishing is an action of its own. Editing a published
+// post, or one with a linked pull request, changes what is out there too.
+const notra: Integration = {
+	id: 'notra',
+	name: 'Notra',
+	description: 'Blog posts, changelogs and social posts in a workspace',
+	signIn: true,
+	apiKey: {keysUrl: 'https://app.usenotra.com'},
+	actions: [
+		{
+			id: 'read',
+			label: 'Read posts',
+			description: 'List and open posts, drafts and published ones',
+			risk: 'low',
+		},
+		{
+			id: 'create',
+			label: 'Create drafts',
+			description: 'Add posts as drafts, which nobody sees until they are published',
+			risk: 'low',
+		},
+		{
+			id: 'edit',
+			label: 'Edit posts',
+			description:
+				'Change the title, slug and content of posts, published ones and their linked pull requests too',
+			risk: 'medium',
+			requires: 'read',
+		},
+		{
+			id: 'publish',
+			label: 'Publish posts',
+			description: 'Publish drafts, and take published posts back to drafts',
+			risk: 'high',
+			requires: 'read',
+			reachesOthers: true,
+		},
+		{
+			id: 'delete',
+			label: 'Delete posts',
+			description: 'Delete posts, taking published ones down',
+			risk: 'high',
+			requires: 'read',
+		},
+	],
+	collections: [
+		{
+			id: 'posts',
+			name: 'Posts',
+			singular: 'post',
+			titleField: 'title',
+			summaryField: 'type',
+			filterField: 'type',
+			read: 'read',
+			writes: {create: 'create', update: 'edit', delete: 'delete'},
+			commands: [
+				{
+					id: 'publish',
+					on: 'record',
+					label: 'Publish',
+					action: 'publish',
+					where: {field: 'status', values: ['Draft']},
+					done: 'Published {}',
+					tried: 'publish {}',
+				},
+				{
+					id: 'unpublish',
+					on: 'record',
+					label: 'Unpublish',
+					action: 'publish',
+					where: {field: 'status', values: ['Published']},
+					done: 'Unpublished {}',
+					tried: 'unpublish {}',
+				},
+			],
+			fields: [
+				{key: 'title', label: 'Title', type: 'text'},
+				// Set when a post is made, never changed.
+				{key: 'type', label: 'Type', type: 'select', options: Object.values(NOTRA_CONTENT_TYPES)},
+				{
+					key: 'status',
+					label: 'Status',
+					type: 'select',
+					options: ['Draft', 'Published'],
+					system: true,
+				},
+				// Blog posts and changelogs only: lowercase words between hyphens, "launch-week".
+				{key: 'slug', label: 'Slug', type: 'text'},
+				{key: 'updated', label: 'Updated', type: 'datetime', system: true},
+				// Markdown.
+				{key: 'content', label: 'Content', type: 'longtext'},
+			],
+		},
+	],
+};
+
 // A SQL database, signed in to with a database user's name and password: PostgreSQL, or MySQL
 // and MariaDB. What the user may do in the database is the limit, so access is narrowed in
 // Personal Agent Proxy: the tables and their rows are one tree, a table holding its rows, and a
@@ -1259,6 +1371,7 @@ export const INTEGRATIONS: Integration[] = [
 	linear,
 	exa,
 	parallel,
+	notra,
 	plaid,
 	postgres,
 	mysql,

@@ -105,6 +105,7 @@ export type IntegrationId =
 	| 'linear'
 	| 'exa'
 	| 'parallel'
+	| 'notra'
 	| 'postgres'
 	| 'mysql'
 	| 'mcp'

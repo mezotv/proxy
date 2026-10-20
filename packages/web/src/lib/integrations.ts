@@ -40,7 +40,7 @@ const NEEDED_BY: Partial<Record<IntegrationId, Need>> = {google: 'google', plaid
 // The integrations whose logo isn't `public/integrations/<id>.svg` as it is: an icon for those
 // that are no one brand's, Information being ours and Email any mailbox, and our mark for custom
 // MCP servers, since Personal Agent Proxy is the service connecting them; another kind of file;
-// or a logo that is already a square tile, as Granola's and Linear's are, which fills the tile
+// or a logo that is already a square tile, as Granola's, Linear's and Notra's are, which fills the tile
 // edge to edge.
 const LOGOS: Partial<Record<IntegrationId, LucideIcon | IntegrationLogoImage>> = {
 	info: IdCardIcon,
@@ -48,6 +48,7 @@ const LOGOS: Partial<Record<IntegrationId, LucideIcon | IntegrationLogoImage>> =
 	mcp: {src: '/favicon.svg'},
 	granola: {src: '/integrations/granola.png', fill: true},
 	linear: {src: '/integrations/linear.svg', fill: true},
+	notra: {src: '/integrations/notra.svg', fill: true},
 };
 
 /** An integration's logo: its file in `public/integrations/`, named by its id, unless `LOGOS` has another. */

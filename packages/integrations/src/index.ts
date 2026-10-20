@@ -15,6 +15,8 @@ export {
 	isOffered,
 	LINEAR_PRIORITIES,
 	LINEAR_STATUS_TYPES,
+	NOTRA_CONTENT_TYPES,
+	NOTRA_CREATABLE_TYPES,
 } from './catalog';
 export {allowedTools, findTool, integrationTools, toolName} from './tools';
 export type {

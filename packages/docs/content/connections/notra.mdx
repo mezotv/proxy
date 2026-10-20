@@ -1,0 +1,47 @@
+---
+title: Notra
+description: Connect a Notra workspace for agents to read, write and publish posts.
+---
+
+Agents work with a Notra workspace's posts, its blog posts, changelogs and social posts, as the
+person who connects Notra. Posts stay in Notra; nothing is copied.
+
+## Connect Notra
+
+<Steps>
+
+### Sign in with Notra, or use an API key
+
+Open **Connections**, then **Add connection**, and **Notra**. Sign in, choose a workspace and an
+access level, and approve access. Connecting another workspace makes another connection.
+
+Or choose the key beside it and paste an API key made in Notra under **API Keys**. A key is for
+one workspace and carries the permissions picked when it was made, so a read-only key keeps agents
+to reading, whatever the connection allows. The key is checked with Notra before the connection is
+made. A key for a workspace already connected replaces that connection's sign-in.
+
+### Review the defaults
+
+A new Notra connection gives every agent Read posts. Create drafts, Edit posts, Publish posts and
+Delete posts are off by default. Turn them on for every agent on the connection's page, or only for
+one agent on the agent's page.
+
+</Steps>
+
+## What agents can do
+
+- **Read posts** lists and opens posts, newest first, with their Markdown. Lists can be narrowed by
+  type, such as Blog post or Changelog.
+- **Create drafts** adds a blog post, changelog, LinkedIn post or X post as a draft, which nobody
+  sees until it is published.
+- **Edit posts** changes a post's title, slug and content. Editing a published post changes it
+  where it is published, and editing one with a linked GitHub pull request updates that pull
+  request. It requires Read posts.
+- **Publish posts** publishes a draft, or takes a published post back to a draft. A published post
+  can appear on the workspace's hosted site. It requires Read posts.
+- **Delete posts** deletes a post for good, taking it down where it was published. It requires
+  Read posts.
+
+A post's type is set when it is made and can't be changed. Generating posts from GitHub activity,
+brand identities, schedules and GEO aren't offered through Personal Agent Proxy; they stay in
+Notra.
