@@ -155,9 +155,9 @@ export function TransactionsWidget({
 					})}
 				</div>
 			)}
-			<ul className="-mx-4 flex flex-col" aria-label="Transactions">
+			<ul className="flex flex-col" aria-label="Transactions">
 				{found.length === 0 && (
-					<li className="px-4 text-muted-foreground">
+					<li className="text-muted-foreground">
 						{read.loading || !read.data ? 'Reading your bank…' : 'No transactions match.'}
 					</li>
 				)}
@@ -175,7 +175,7 @@ export function TransactionsWidget({
 					/>
 				))}
 				{found.length > shown.length && (
-					<li className="px-4 text-muted-foreground">
+					<li className="text-muted-foreground">
 						{found.length - shown.length === 1 ? '1 more' : `${found.length - shown.length} more`}
 						{read.data?.more && ', of the newest the bank gave'}
 					</li>
@@ -200,7 +200,7 @@ function TransactionRow({
 			: undefined;
 	const incoming = transaction.amount > 0;
 	return (
-		<li className="flex h-10 min-w-0 items-center gap-3 px-4">
+		<li className="bleed flex h-10 min-w-0 items-center gap-3">
 			<span className="min-w-0 flex-1 truncate">
 				{transaction.merchant ?? transaction.name}
 				{transaction.pending && <span className="text-muted-foreground"> · pending</span>}

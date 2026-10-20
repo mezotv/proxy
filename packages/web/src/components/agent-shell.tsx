@@ -45,9 +45,11 @@ export function AgentShell({children, feedback = true}: {children: ReactNode; fe
 					</Button>
 				</div>
 			</header>
-			<main className="mx-auto w-full max-w-3xl px-4 pt-6 pb-12">{children}</main>
+			<main className="page-column mx-auto flex w-full max-w-3xl flex-col gap-4 pt-6 pb-12">
+				{children}
+			</main>
 			{feedback && (
-				<footer className="mx-auto w-full max-w-3xl px-4 pb-8 text-sm text-muted-foreground md:px-7">
+				<footer className="page-column mx-auto w-full max-w-3xl pb-8 text-sm text-muted-foreground">
 					Something here not working as you expected?{' '}
 					<Link
 						to={about ? `/agent/feedback?${about}` : '/agent/feedback'}
@@ -69,7 +71,7 @@ export function Crumbs({items}: {items: Crumb[]}) {
 	return (
 		<nav
 			aria-label="Breadcrumb"
-			className="mb-4 flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground md:px-3"
+			className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground"
 		>
 			{items.map((item, index) => (
 				<Fragment key={index}>
@@ -92,9 +94,9 @@ export function Crumbs({items}: {items: Crumb[]}) {
 // The page's own heading, with what the agent may do here beside it.
 export function AgentHeading({children, detail}: {children: ReactNode; detail?: string}) {
 	return (
-		<h1 className="text-lg font-semibold">
+		<h1 className="flex flex-wrap items-baseline gap-x-2 text-lg font-semibold">
 			{children}
-			{detail && <span className="ml-2 text-sm font-normal text-muted-foreground">{detail}</span>}
+			{detail && <span className="text-sm font-normal text-muted-foreground">{detail}</span>}
 		</h1>
 	);
 }
@@ -106,7 +108,7 @@ export function PersonLinkHint({collection}: {collection: Collection}) {
 	const text = collection.openIn
 		? `To show the person ${collection.name.toLowerCase()}, give them the links in ${collection.openIn}, never the address of a page here: only this login can open these pages.`
 		: `The person can’t open these pages: only this login can. Tell them which ${collection.singular} you mean by its ${title?.label.toLowerCase() ?? 'title'} instead.`;
-	return <p className="mb-4 text-sm text-muted-foreground md:px-3">{text}</p>;
+	return <p className="text-sm text-muted-foreground">{text}</p>;
 }
 
 // A record's link in the provider's app, "Open in Gmail", opening in a new tab.

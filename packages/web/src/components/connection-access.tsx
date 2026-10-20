@@ -1,7 +1,6 @@
 import type {Action, OwnSettings} from '@proxy/integrations';
 import {CheckCheckIcon, Undo2Icon} from 'lucide-react';
 import {useId, useLayoutEffect, useRef, useState} from 'react';
-import {RowList} from '@/components/row-list';
 import {IconButton} from '@/components/icon-button';
 import {Badge} from '@proxy/ui/components/badge';
 import {Button} from '@proxy/ui/components/button';
@@ -25,6 +24,10 @@ type Props = {
 	// The connection has no sign-in at all yet, so none of its actions is covered.
 	signInNeeded?: boolean;
 };
+
+// The actions, one under another, spaced by the list rather than each row, so the list sits
+// as tight to what holds it as anything else does.
+const ROWS = 'flex flex-col gap-4';
 
 // A connection's access, the way an editor shows its settings: one checkbox per action, the only
 // control for it, under the name of the part of the provider it belongs to where the integration
@@ -153,33 +156,36 @@ export function ConnectionAccess({
 			<li
 				key={action.id}
 				className={cn(
-					'flex items-start gap-3 border-l-2 py-2 pr-4 pl-3.5 text-sm md:pr-3 md:pl-2.5',
-					isOwn(action.id) ? 'border-primary' : 'border-transparent',
+					// Out in the gutter as any row, where a setting of the agent's own shows as a stripe.
+					'bleed flex items-start gap-3 text-sm',
+					isOwn(action.id) && 'shadow-[inset_2px_0_0_var(--color-primary)]',
 				)}
 			>
-				<Checkbox
-					id={inputId}
-					aria-labelledby={labelId}
-					aria-describedby={descriptionId}
-					className="mt-0.5"
-					checked={checked}
-					disabled={disabled}
-					onMouseDown={(event) => {
-						if (disabled || !event.shiftKey || event.button !== 0) {
-							return;
-						}
+				{/* As tall as the label's line, the box centered on it. */}
+				<span className="flex h-5 shrink-0 items-center">
+					<Checkbox
+						id={inputId}
+						aria-labelledby={labelId}
+						aria-describedby={descriptionId}
+						checked={checked}
+						disabled={disabled}
+						onMouseDown={(event) => {
+							if (disabled || !event.shiftKey || event.button !== 0) {
+								return;
+							}
 
-						event.preventDefault();
-						event.currentTarget.focus();
-					}}
-					onCheckedChange={(next, details) =>
-						changeRange(
-							action.id,
-							next,
-							details.event instanceof MouseEvent && details.event.shiftKey,
-						)
-					}
-				/>
+							event.preventDefault();
+							event.currentTarget.focus();
+						}}
+						onCheckedChange={(next, details) =>
+							changeRange(
+								action.id,
+								next,
+								details.event instanceof MouseEvent && details.event.shiftKey,
+							)
+						}
+					/>
+				</span>
 				<div
 					className="flex min-w-0 flex-1 flex-col gap-0.5"
 					onMouseDown={(event) => {
@@ -258,26 +264,23 @@ export function ConnectionAccess({
 			onChange(Object.fromEntries(changing.map((id) => [id, setting(id, next)]))),
 		);
 	};
-	// As far from the edge above as the rows are from the side, in a card the list sits in.
 	const all = settable.length > 1 && (
-		<div className="flex pt-3 md:px-3">
-			<Button variant="outline" size="sm" onClick={() => setAll(!allOn)}>
-				{allOn ? 'Disable all' : 'Enable all'}
-			</Button>
-		</div>
+		<Button variant="outline" size="sm" className="self-start" onClick={() => setAll(!allOn)}>
+			{allOn ? 'Disable all' : 'Enable all'}
+		</Button>
 	);
 
 	const groups = groupsOf(actions);
 	if (groups.length === 1 && groups[0]?.name === undefined) {
 		return (
-			<div className="flex flex-col gap-2">
+			<div className="flex flex-col gap-4">
 				{all}
-				<RowList>{actions.map(row)}</RowList>
+				<ul className={ROWS}>{actions.map(row)}</ul>
 			</div>
 		);
 	}
 	return (
-		<div className="flex flex-col gap-4">
+		<div className="flex flex-col gap-6">
 			{all}
 			{groups.map((group, index) => {
 				const headingId = `${idPrefix}-group-${index}`;
@@ -286,13 +289,13 @@ export function ConnectionAccess({
 					<section
 						key={group.name ?? 'other'}
 						aria-labelledby={headingId}
-						className="flex flex-col"
+						className="flex flex-col gap-2"
 					>
-						<div className="flex h-8 items-center justify-between gap-3 text-sm md:px-3">
+						<div className="flex h-8 items-center justify-between gap-3 text-sm">
 							<h3 id={headingId}>{group.name ?? 'Other'}</h3>
 							<span className="text-muted-foreground">{howManyOn(on, group.actions.length)}</span>
 						</div>
-						<RowList>{group.actions.map(row)}</RowList>
+						<ul className={ROWS}>{group.actions.map(row)}</ul>
 					</section>
 				);
 			})}
@@ -336,12 +339,10 @@ export function SignInAgain({
 	href,
 	reason,
 	onUseKey,
-	className,
 }: {
 	href: string;
 	reason: 'unavailable' | 'needed' | 'renew';
 	onUseKey?: () => void;
-	className?: string;
 }) {
 	const link = 'text-foreground underline underline-offset-4';
 	const useKey = onUseKey && (
@@ -351,7 +352,7 @@ export function SignInAgain({
 	);
 	if (reason === 'needed') {
 		return (
-			<p className={cn('text-sm text-muted-foreground', className)}>
+			<p className="text-sm text-muted-foreground">
 				This connection isn't signed in yet, so agents can't use it.{' '}
 				<a href={href} className={link}>
 					Sign in
@@ -362,7 +363,7 @@ export function SignInAgain({
 	}
 	if (reason === 'renew') {
 		return (
-			<p className={cn('text-sm text-muted-foreground', className)}>
+			<p className="text-sm text-muted-foreground">
 				<a href={href} className={link}>
 					Sign in again
 				</a>
@@ -371,7 +372,7 @@ export function SignInAgain({
 		);
 	}
 	return (
-		<p className={cn('text-sm text-muted-foreground', className)}>
+		<p className="text-sm text-muted-foreground">
 			Some actions weren't allowed when this account was signed in.{' '}
 			<a href={href} className="text-foreground underline underline-offset-4">
 				Sign in again

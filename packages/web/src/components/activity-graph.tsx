@@ -70,7 +70,7 @@ export function ActivityGraph({
 		<section aria-label="Activity" className="flex w-full max-w-2xl flex-col items-center gap-3">
 			<div className="flex flex-col items-end gap-2">
 				<div ref={frame} className="relative flex gap-[2px]" onMouseLeave={() => setHovered(null)}>
-					<div className="mr-1 flex flex-col gap-[2px] pt-5 text-xs text-muted-foreground">
+					<div className="flex flex-col gap-[2px] pt-5 pr-1 text-xs text-muted-foreground">
 						{ROW_LABELS.map((label, row) => (
 							<span key={row} className="h-2.5 leading-[10px]">
 								{label}
@@ -101,11 +101,11 @@ export function ActivityGraph({
 					{hovered && <DayTooltip hovered={hovered} agents={agents} />}
 				</div>
 				<div aria-hidden className="flex items-center gap-[2px] text-xs text-muted-foreground">
-					<span className="mr-1">Less</span>
+					<span className="pr-1">Less</span>
 					{LEVELS.map((color) => (
 						<span key={color} className={cn(CELL, color)} />
 					))}
-					<span className="ml-1">More</span>
+					<span className="pl-1">More</span>
 				</div>
 			</div>
 			{summary.days.length === 0 && (

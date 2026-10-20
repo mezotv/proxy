@@ -25,10 +25,10 @@ import type {Connection} from '@/lib/types';
 // its address. One that also takes an API key, as Exa, Linear and Parallel do, has a key before its plus,
 // which takes the key in a dialog here; its plus is then a link of its own beside the row's.
 
-// The whole row is the link or button; its plus is styled as a ghost icon button that lights up
-// with the row, and dimmed on a row greyed out.
+// The whole row is the link or button, out in the list's gutter as a row of `RowList` is; its plus is
+// styled as a ghost icon button that lights up with the row, and dimmed on a row greyed out.
 const ROW =
-	'group flex min-h-14 w-full items-center gap-3 px-4 py-2 text-left text-sm outline-none md:px-3';
+	'group flex min-h-14 w-full items-center gap-3 px-(--bleed) py-2 text-left text-sm outline-none';
 const PLUS_BUTTON = buttonVariants({variant: 'ghost', size: 'icon-sm'});
 const PLUS = cn(
 	PLUS_BUTTON,
@@ -114,7 +114,7 @@ export function IntegrationCatalog({
 						</>
 					);
 					return (
-						<li key={integration.id} className="flex items-center">
+						<li key={integration.id} className="-mx-(--bleed) flex items-center">
 							{unmet && <div className={ROW}>{content}</div>}
 							{!unmet && signIn && (
 								<a href={signIn} className={ROW}>
@@ -127,7 +127,7 @@ export function IntegrationCatalog({
 								</button>
 							)}
 							{!unmet && signIn && integration.apiKey && (
-								<span className="flex items-center gap-1 pr-4 md:pr-3">
+								<span className="flex items-center gap-1 pr-(--bleed)">
 									<IconButton
 										label={`Connect ${integration.name} with an API key`}
 										onClick={() => setKeyFor(integration.id)}
@@ -176,22 +176,14 @@ function ServerNeeds({need}: {need: Need}) {
 // Why a sign-in sent back to the catalog with `?error=` didn't go through: the server lacking what
 // the integration needs, said as the catalog's row says it, unless it has it by now, or the
 // sign-in not finishing.
-export function SignInFailed({
-	error,
-	configured,
-	className,
-}: {
-	error: string | null;
-	configured: Configured;
-	className?: string;
-}) {
+export function SignInFailed({error, configured}: {error: string | null; configured: Configured}) {
 	const unmet = unmetNeed(error);
 	if (unmet && configured[unmet]) {
 		return null;
 	}
 	if (unmet) {
 		return (
-			<p className={cn('text-sm text-destructive', className)}>
+			<p className="text-sm text-destructive">
 				<ServerNeeds need={unmet} />
 			</p>
 		);
@@ -201,5 +193,5 @@ export function SignInFailed({
 	if (!failed) {
 		return null;
 	}
-	return <p className={cn('text-sm text-destructive', className)}>{failed}</p>;
+	return <p className="text-sm text-destructive">{failed}</p>;
 }

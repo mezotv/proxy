@@ -66,7 +66,7 @@ export function ActivityPage() {
 
 	return (
 		<AppShell title={<PageTitle detail={`${entries.length} requests`}>Activity</PageTitle>}>
-			<div className="mb-3 flex flex-wrap gap-2 md:flex-nowrap md:px-3">
+			<div className="flex flex-wrap gap-2 md:flex-nowrap">
 				<Filter
 					label="Agent"
 					options={agents}

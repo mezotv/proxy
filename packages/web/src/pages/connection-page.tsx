@@ -1,4 +1,4 @@
-import {CircleCheckIcon, ListRestartIcon, RefreshCwIcon, UnplugIcon} from 'lucide-react';
+import {ListRestartIcon, RefreshCwIcon, UnplugIcon} from 'lucide-react';
 import type {FetchError} from '@proxy/utils';
 import {useState} from 'react';
 import {Link, useLoaderData, useNavigate, useRevalidator, useSearchParams} from 'react-router';
@@ -19,6 +19,7 @@ import {AgentLogo, IntegrationLogo} from '@/components/brand-logo';
 import {NotFound} from '@/components/not-found';
 import {EmptyRows, Row, RowList} from '@/components/row-list';
 import {Section} from '@/components/section';
+import {SuccessLine} from '@/components/success-line';
 import {
 	actionsFor,
 	agentsWithAccess,
@@ -118,12 +119,7 @@ export function ConnectionPage() {
 			}
 		>
 			<div className="flex flex-col gap-8">
-				{added && (
-					<p className="flex items-center gap-2 rounded-lg bg-green-500/10 px-3 py-2 text-sm text-green-700 dark:text-green-400">
-						<CircleCheckIcon className="size-4 shrink-0" />
-						Connection added successfully
-					</p>
-				)}
+				{added && <SuccessLine>Connection added successfully</SuccessLine>}
 				<Section
 					title="Permissions"
 					detail={
@@ -133,10 +129,10 @@ export function ConnectionPage() {
 					}
 				>
 					{integration.disclosure && (
-						<p className="text-sm text-muted-foreground md:px-3">{integration.disclosure}</p>
+						<p className="text-sm text-muted-foreground">{integration.disclosure}</p>
 					)}
 					{integration.custom && integration.actions.length === 0 && (
-						<p className="text-sm text-muted-foreground md:px-3">The server lists no tools.</p>
+						<p className="text-sm text-muted-foreground">The server lists no tools.</p>
 					)}
 					<ConnectionAccess
 						actions={integration.actions}
@@ -155,7 +151,6 @@ export function ConnectionPage() {
 							href={renew}
 							reason={renewReason}
 							onUseKey={integration.apiKey ? () => setReplacingKey(true) : undefined}
-							className="md:px-3"
 						/>
 					)}
 					{replacingKey && (
@@ -170,9 +165,9 @@ export function ConnectionPage() {
 						/>
 					)}
 					{connection.integrationId === 'plaid' && (
-						<SignInToBankAgain connectionId={connection.id} className="md:px-3" />
+						<SignInToBankAgain connectionId={connection.id} />
 					)}
-					{error && <p className="mt-2 text-sm text-destructive md:px-3">{error}</p>}
+					{error && <p className="text-sm text-destructive">{error}</p>}
 				</Section>
 				<Section title="Agents with access">
 					<RowList>

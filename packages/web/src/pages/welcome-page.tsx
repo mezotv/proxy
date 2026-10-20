@@ -15,6 +15,7 @@ import {IntegrationCatalog, SignInFailed} from '@/components/integration-catalog
 import {StepHeading} from '@/components/step-heading';
 import {SuccessLine} from '@/components/success-line';
 import {Button} from '@proxy/ui/components/button';
+import {Card} from '@proxy/ui/components/card';
 import {defaultActions, defaultsOnOrOff, integrationOf} from '@/lib/access';
 import {
 	describeDatabase,
@@ -140,7 +141,7 @@ function agentNameOf(agents: AgentLogin[]): string {
 
 function Frame({step, children}: {step: 1 | 2; children: ReactNode}) {
 	return (
-		<div className="flex min-h-dvh w-full justify-center bg-background p-4 pt-[12vh] text-foreground">
+		<div className="page-column flex min-h-dvh w-full justify-center bg-background pt-[12vh] pb-4 text-foreground">
 			<div className="grid w-full max-w-lg content-start gap-4">
 				<p className="text-sm text-muted-foreground">Step {step} of 2</p>
 				{children}
@@ -326,7 +327,7 @@ function ConnectionStep({
 			{integration.disclosure && (
 				<p className="text-sm text-muted-foreground">{integration.disclosure}</p>
 			)}
-			<div className="rounded-xl border bg-card px-1 py-1">
+			<Card>
 				<ConnectionAccess
 					actions={integration.actions}
 					defaults={defaults}
@@ -338,7 +339,7 @@ function ConnectionStep({
 						await revalidate();
 					}}
 				/>
-			</div>
+			</Card>
 			{signInAgain && (
 				<SignInAgain
 					href={signInAgain}

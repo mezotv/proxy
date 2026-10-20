@@ -76,9 +76,9 @@ export function BalancesWidget({intent}: {intent: Intent}) {
 					No account called “{said}”, so every account is shown.
 				</p>
 			)}
-			<ul className="-mx-4 flex flex-col" aria-label="Accounts">
+			<ul className="flex flex-col" aria-label="Accounts">
 				{accounts.length === 0 && (
-					<li className="px-4 text-muted-foreground">
+					<li className="text-muted-foreground">
 						{read.loading || !read.data ? 'Reading your bank…' : 'No accounts.'}
 					</li>
 				)}
@@ -93,10 +93,10 @@ export function BalancesWidget({intent}: {intent: Intent}) {
 					/>
 				))}
 				{folded.length > 0 && (
-					<li>
+					<li className="-mx-(--bleed)">
 						<button
 							type="button"
-							className="flex h-10 w-full items-center px-4 text-left text-muted-foreground hover:bg-muted"
+							className="flex h-10 w-full items-center px-(--bleed) text-left text-muted-foreground hover:bg-muted"
 							onClick={() => setUnfolded(true)}
 						>
 							{folded.length === 1 ? '1 more account' : `${folded.length} more accounts`}
@@ -129,14 +129,14 @@ function BankRows({
 	return (
 		<>
 			{bank && (
-				<li className="flex h-8 items-center px-4 text-xs text-muted-foreground">
+				<li className="bleed flex h-8 items-center text-xs text-muted-foreground">
 					{bank.name ?? bank.account}
 				</li>
 			)}
 			{accounts.map((account) => (
 				<li
 					key={`${account.connectionId} ${account.id}`}
-					className={`flex h-10 min-w-0 items-center gap-3 px-4 ${matched.includes(account) ? 'font-medium' : ''}`}
+					className={`bleed flex h-10 min-w-0 items-center gap-3 ${matched.includes(account) ? 'font-medium' : ''}`}
 				>
 					<span className="min-w-0 flex-1 truncate">{account.name}</span>
 					<span className="hidden min-w-0 flex-1 truncate font-normal text-muted-foreground md:inline">

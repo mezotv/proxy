@@ -297,7 +297,7 @@ export function HomePage() {
 				</div>
 				<ConnectedLogos connections={connections} agents={agents} />
 				{activity && (
-					<div className="mt-[6vh] flex w-full justify-center">
+					<div className="flex w-full justify-center pt-[6vh]">
 						<ActivityGraph summary={activity} agents={agents} connections={connections} />
 					</div>
 				)}

@@ -23,7 +23,7 @@ export function AddConnectionPage() {
 				</>
 			}
 		>
-			<SignInFailed error={params.get('error')} configured={configured} className="mb-4 md:px-3" />
+			<SignInFailed error={params.get('error')} configured={configured} />
 			<IntegrationCatalog
 				connections={connections}
 				configured={configured}
