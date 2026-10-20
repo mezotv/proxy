@@ -135,6 +135,9 @@ export type Integration = {
 	// Also connected with an API key, made at `keysUrl`, on `/api/connections/<id>`: Exa, Linear
 	// and Parallel, whose MCP servers take one as a bearer token.
 	apiKey?: {keysUrl: string};
+	// Says nothing of who signed in, or whose a key is: Exa and Parallel. Each sign-in or key is a
+	// connection of its own, which only its own page signs in to again or gives a new key.
+	anonymous?: true;
 	// The experiment an organization needs on to connect it: the catalog, the api's routes and the
 	// MCP server's instructions all leave it out without. Connections already made keep working.
 	experiment?: Experiment;

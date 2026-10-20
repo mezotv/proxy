@@ -154,13 +154,17 @@ export function exchangeMcpCode(server: McpServer, args: {clientId: string; redi
 	return requestTokens(server, args.clientId, {grant_type: 'authorization_code', code: args.code, redirect_uri: args.redirectUri, code_verifier: args.verifier}, null);
 }
 
-/** New tokens for a connection whose access token ran out; turned down once the server revoked it. */
-export async function refreshMcpTokens(server: McpServer, credential: McpCredential): Promise<Result<McpCredential, ApiError>> {
+/** New tokens, and the workspace the server names with them, where it does; turned down once the server revoked the sign-in. */
+export async function refreshMcpSignIn(server: McpServer, credential: McpCredential): Promise<Result<McpSignIn, ApiError>> {
 	if (!credential.refreshToken) {
 		return Err(ApiErr.credentialsRejected());
 	}
-	const refreshed = await requestTokens(server, credential.clientId, {grant_type: 'refresh_token', refresh_token: credential.refreshToken}, credential.refreshToken);
-	return refreshed.map((signIn) => signIn.credential);
+	return requestTokens(server, credential.clientId, {grant_type: 'refresh_token', refresh_token: credential.refreshToken}, credential.refreshToken);
+}
+
+/** New tokens for a connection whose access token ran out; turned down once the server revoked it. */
+export async function refreshMcpTokens(server: McpServer, credential: McpCredential): Promise<Result<McpCredential, ApiError>> {
+	return (await refreshMcpSignIn(server, credential)).map((signIn) => signIn.credential);
 }
 
 export function isExpiring(credential: McpCredential): boolean {

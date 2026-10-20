@@ -469,6 +469,7 @@ function webIntegration(
 		description,
 		signIn: true,
 		apiKey: {keysUrl},
+		anonymous: true,
 		actions: [
 			{
 				id: 'search',

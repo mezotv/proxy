@@ -1,6 +1,6 @@
 import type {Action, OwnSettings} from '@proxy/integrations';
 import {CheckCheckIcon, Undo2Icon} from 'lucide-react';
-import {useEffect, useId, useRef, useState} from 'react';
+import {useId, useLayoutEffect, useRef, useState} from 'react';
 import {RowList} from '@/components/row-list';
 import {IconButton} from '@/components/icon-button';
 import {Badge} from '@proxy/ui/components/badge';
@@ -52,10 +52,11 @@ export function ConnectionAccess({
 	const queues = useRef<Partial<Record<string, Promise<void>>>>({});
 	const rangeAnchor = useRef<string | null>(null);
 	// The latest settings, for a change saved after others finished, read when it runs rather than
-	// when it was clicked.
+	// when it was clicked: kept as the render commits, before a queued save can run, which a passive
+	// effect, run later, wouldn't be.
 	const defaultsRef = useRef(defaults);
 	const ownRef = useRef(own);
-	useEffect(() => {
+	useLayoutEffect(() => {
 		defaultsRef.current = defaults;
 		ownRef.current = own;
 	});

@@ -5,7 +5,7 @@ import {Err, type Result} from 'ts-results-es';
 import {z} from 'zod';
 
 import {ApiErr, type ApiError, Do, parseCookieHeader, requirePresent} from '@proxy/utils';
-import {createConnection, findAccountConnection, getConnection, renewConnection, updateConnectionName, updateConnectionTools, type ConnectionRow} from '@proxy/db/connection';
+import {createConnection, findAccountConnection, getConnectionWithCredential, renewConnection, updateConnectionName, updateConnectionTools, type ConnectionRow} from '@proxy/db/connection';
 import type {IntegrationId, McpTool} from '@proxy/integrations';
 
 import {queryParam, timingSafeEqualString, useSecureCookies} from '../auth/session';
@@ -25,14 +25,13 @@ import {requireUserOrgId} from '../utils/user-org';
  * answer of the route that found it, as a custom server's connect route (`signInFlow`). The
  * callback checks the provider's answer against the cookie, trades the code for tokens and makes
  * the connection, or gives an existing one its new tokens, which is how signing in again works:
- * the one the sign-in was begun from (`?connection=`), as a connection's page begins it, else one
- * of the same account, unless the provider said nothing of who signed in (`anonymous`), so only a
- * connection's own page renews it. The callback ends on the connection's page, or back on the
- * catalog with `?error=<integration>`
- * (with `?error=<integration>-unconfigured` when the server lacks what the sign-in needs, such as
- * Google's client); a sign-in begun from the welcome flow (`returnTo: 'welcome'`) ends on its page
- * for the connection, or its catalog, instead. What the provider's sign-in page is and how a code
- * becomes tokens and a connection is the integration's.
+ * the one of the same account, or, where the account can't be told apart (`connectionToRenew`),
+ * the one the sign-in was begun from (`?connection=`), as a connection's page begins it, so only
+ * that page renews it. The callback ends on the connection's page, or back on the catalog with
+ * `?error=<integration>` (with `?error=<integration>-unconfigured` when the server lacks what the
+ * sign-in needs, such as Google's client); a sign-in begun from the welcome flow
+ * (`returnTo: 'welcome'`) ends on its page for the connection, or its catalog, instead. What the
+ * provider's sign-in page is and how a code becomes tokens and a connection is the integration's.
  */
 
 const stateCookieMaxAgeMs = 15 * 60 * 1000;
@@ -75,10 +74,12 @@ function makePkce(): {verifier: string; challenge: string} {
 	return {verifier, challenge: createHash('sha256').update(verifier).digest('base64url')};
 }
 
-// The connection a sign-in was begun from, while it is still the organization's and the
-// integration's; else the one of the same account, if there is one, unless the provider said
-// nothing of who signed in (`anonymous`): those can't be told apart, so only the one begun from is
-// renewed.
+// The one of the same account, if there is one: a sign-in to another account is a connection of
+// its own, never one agents were given for the first. A sign-in begun from a connection
+// (`?connection=`) renews that one, while it is still the organization's and the integration's,
+// only where its account can't be told apart from another's: the provider said nothing of who
+// signed in (`anonymous`), or the connection was never signed in to, as one moved over from a
+// custom MCP server without a sign-in of the integration's (`take-over-custom.ts`).
 function connectionToRenew(
 	orgId: string,
 	integrationId: IntegrationId,
@@ -86,9 +87,10 @@ function connectionToRenew(
 	connectionId: string | null,
 ): Promise<Result<ConnectionRow | null, ApiError>> {
 	return Do(async ($) => {
-		const begunFrom = connectionId === null ? null : $(await getConnection(orgId, connectionId));
-		if (begunFrom?.integrationId === integrationId) {
-			return begunFrom;
+		const begunFrom = connectionId === null ? null : $(await getConnectionWithCredential(orgId, connectionId));
+		if (begunFrom?.integrationId === integrationId && (connected.anonymous || begunFrom.credential === null)) {
+			const {credential: _credential, ...row} = begunFrom;
+			return row;
 		}
 		if (connected.anonymous) {
 			return null;

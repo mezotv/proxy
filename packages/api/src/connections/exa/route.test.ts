@@ -8,10 +8,10 @@ const createConnection = mock();
 const renewConnection = mock();
 const updateConnectionName = mock();
 
-const getConnection = mock();
+const getConnectionWithCredential = mock();
 
 mock.module('@proxy/db/connection', () => ({
-	getConnection,
+	getConnectionWithCredential,
 	findAccountConnection,
 	createConnection,
 	renewConnection,
@@ -54,9 +54,14 @@ spyOn(globalThis, 'fetch').mockImplementation((async (input: string | URL | Requ
 	}
 	if (url.host === 'mcp.exa.ai') {
 		// Exa's server answers anyone; a key it turns down fails the tool call.
-		const bad = new Headers(init?.headers).get('authorization') === 'Bearer bad-key';
-		const text = bad ? 'web_fetch_exa error (401): Invalid API key. Provide a valid key.' : '# Example Domain\nURL: https://example.com\n\nExample';
-		return Response.json({jsonrpc: '2.0', id: 1, result: {content: [{type: 'text', text}], ...(bad ? {isError: true} : {})}});
+		const authorization = new Headers(init?.headers).get('authorization');
+		if (authorization === 'Bearer bad-key') {
+			return Response.json({jsonrpc: '2.0', id: 1, result: {content: [{type: 'text', text: 'web_fetch_exa error (401): Invalid API key. Provide a valid key.'}], isError: true}});
+		}
+		if (authorization === 'Bearer busy-key-4321') {
+			return Response.json({jsonrpc: '2.0', id: 1, result: {content: [{type: 'text', text: 'Error fetching URL(s): example.com timeout'}], isError: true}});
+		}
+		return Response.json({jsonrpc: '2.0', id: 1, result: {content: [{type: 'text', text: '# Example Domain\nURL: https://example.com\n\nExample'}]}});
 	}
 	return Response.json({access_token: 'access-1', token_type: 'bearer'});
 }) as typeof fetch);
@@ -108,7 +113,16 @@ async function connectWithKey(body: unknown) {
 	return keyConnectRoute(EXA_MCP)({user, body} as never);
 }
 
-const existing = {id: 'conn-0', integrationId: 'exa', account: 'Signed in', createdAt: new Date('2026-10-01T00:00:00Z'), tools: null, name: 'Team Exa', defaults: [{actionId: 'search'}]};
+const existing = {
+	id: 'conn-0',
+	integrationId: 'exa',
+	account: 'Signed in',
+	createdAt: new Date('2026-10-01T00:00:00Z'),
+	tools: null,
+	name: 'Team Exa',
+	defaults: [{actionId: 'search'}],
+	credential: 'enc:{}',
+};
 
 beforeEach(() => {
 	mock.clearAllMocks();
@@ -118,7 +132,7 @@ beforeEach(() => {
 	createConnection.mockImplementation(async (data: {integrationId: string; account: string; defaults: string[]; name?: string}) =>
 		Ok({id: 'conn-1', integrationId: data.integrationId, account: data.account, createdAt: new Date(), tools: null, name: data.name ?? null, defaults: data.defaults.map((actionId) => ({actionId}))}),
 	);
-	getConnection.mockResolvedValue(Ok(null));
+	getConnectionWithCredential.mockResolvedValue(Ok(null));
 	renewConnection.mockResolvedValue(Ok(undefined));
 });
 
@@ -158,11 +172,11 @@ describe('handleExaCallbackRoute', () => {
 	});
 
 	test("begun from a connection's page (`?connection=`), the sign-in gives that connection the new tokens, its name kept", async () => {
-		getConnection.mockResolvedValue(Ok(existing));
+		getConnectionWithCredential.mockResolvedValue(Ok(existing));
 		const {cookie, state} = await start({connection: 'conn-0'});
 		const res = await callback({cookie: cookie?.value ?? '', query: {state, code: 'code-1'}});
 
-		expect(getConnection).toHaveBeenCalledWith('org-1', 'conn-0');
+		expect(getConnectionWithCredential).toHaveBeenCalledWith('org-1', 'conn-0');
 		expect(createConnection).not.toHaveBeenCalled();
 		expect(renewConnection.mock.calls[0]?.[0]).toMatchObject({connectionId: 'conn-0', account: 'Signed in'});
 		expect(updateConnectionName).not.toHaveBeenCalled();
@@ -209,8 +223,14 @@ describe('keyConnectRoute', () => {
 		expect(createConnection).not.toHaveBeenCalled();
 	});
 
+	test("a page Exa couldn't read with the key says nothing against the key, which connects", async () => {
+		const connection = (await connectWithKey({key: 'busy-key-4321'})).unwrap();
+
+		expect(connection).toMatchObject({id: 'conn-1', account: 'API key ending 4321'});
+	});
+
 	test("given a connection (`connection`), the key replaces that connection's credential, its name kept", async () => {
-		getConnection.mockResolvedValue(Ok(existing));
+		getConnectionWithCredential.mockResolvedValue(Ok(existing));
 		const connection = (await connectWithKey({connection: 'conn-0', key: 'exa-key-5678'})).unwrap();
 
 		expect(createConnection).not.toHaveBeenCalled();

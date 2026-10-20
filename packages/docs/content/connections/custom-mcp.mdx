@@ -28,8 +28,10 @@ The servers of the services Personal Agent Proxy connects itself, [Granola](/con
 [Notion](/connections/notion), [Linear](/connections/linear), [Exa](/connections/exa) and
 [Parallel](/connections/parallel), are connected as those services, under the name you gave, as
 adding them from the list of connections does: entering one's address opens the service's own
-sign-in, or, for Exa, Linear and Parallel with an access token typed in, connects the service with it as
-its API key. See also [When a server becomes built in](#when-a-server-becomes-built-in).
+sign-in, or, for Exa, Linear and Parallel with an access token typed in, or Exa's address with its
+key in it (`?exaApiKey=`), connects the service with it as its API key. Granola and Notion are only
+signed in to, so a token typed in for them is turned down. See also
+[When a server becomes built in](#when-a-server-becomes-built-in).
 
 ### Sign in, if the server asks
 
@@ -87,6 +89,9 @@ its agents and its activity:
   for are dropped.
 - Tool runs in the activity log become the service's own requests, such as listing Linear issues
   or running a web search. Runs of tools it has no action for stay as they were.
-- A server you signed in to stays signed in, and an access token typed in for Exa, Linear or Parallel
-  becomes the connection's API key. One connected without either has to be signed in to before
-  agents can use it: open the connection and choose **Sign in**.
+- A server you signed in to stays signed in, and an access token typed in for Exa, Linear or
+  Parallel, or an Exa key in the server's address, becomes the connection's API key. Any other
+  token, or a sign-in the service has since revoked, doesn't carry over: the connection has to be
+  signed in to before agents can use it, so open it and choose **Sign in**.
+- A server you connected with no token or sign-in at all, as Parallel's free search server, stays a
+  custom server, so it keeps working as it did.

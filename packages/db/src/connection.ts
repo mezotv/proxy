@@ -1,4 +1,4 @@
-import type {Result} from 'ts-results-es';
+import {Ok, type Result} from 'ts-results-es';
 
 import {type ApiError, wrapDb} from '@proxy/utils';
 
@@ -303,33 +303,46 @@ export type MovedRun = {
 	query: string | null;
 };
 
-/**
- * Moves a custom MCP connection to a built-in integration, all at once: the connection, with no
- * tools of its own and the credential given, null where it has to be signed in to; its defaults and
- * every agent's settings, replaced; and its tool runs in the activity log, rewritten. Only while it
- * is still a custom connection, so two servers starting at once move it once: `Ok(false)` when
- * another did.
- */
-export async function takeOverConnection(data: {
-	connectionId: string;
+/** What a custom MCP connection becomes, moved to a built-in integration. */
+export type MovedConnection = {
 	integrationId: string;
 	account: string;
 	credential: string | null;
 	defaults: string[];
 	grants: Array<{agentId: string; actionId: string; allowed: boolean}>;
 	runs: MovedRun[];
-}): Promise<Result<boolean, ApiError>> {
-	const {connectionId, integrationId, account, credential, defaults, grants, runs} = data;
-	return wrapDb(() =>
+};
+
+/**
+ * Moves a custom MCP connection to a built-in integration, all at once: the connection, with no
+ * tools of its own and the credential given, null where it has to be signed in to; its defaults and
+ * every agent's settings, replaced; and its tool runs in the activity log, rewritten. `move` says
+ * what it becomes, and runs with the connection locked, only while it is still a custom
+ * connection, so two servers starting at once move it once, and only one of them refreshes its
+ * tokens: `Ok(false)` when another did. It must not use the database itself, whose connection
+ * the lock holds, the local database having only one.
+ */
+export async function takeOverConnection(
+	connectionId: string,
+	move: () => Promise<Result<MovedConnection, ApiError>>,
+): Promise<Result<boolean, ApiError>> {
+	const done = await wrapDb(() =>
 		db.$transaction(
-			async (tx) => {
-				const claimed = await tx.connection.updateMany({
-					where: {id: connectionId, integrationId: 'mcp'},
+			async (tx): Promise<Result<boolean, ApiError>> => {
+				const locked = await tx.$queryRaw<Array<{id: string}>>`
+					SELECT "id" FROM "Connection" WHERE "id" = ${connectionId} AND "integrationId" = 'mcp' FOR UPDATE`;
+				if (locked.length === 0) {
+					return Ok(false);
+				}
+				const moved = await move();
+				if (moved.isErr()) {
+					return moved;
+				}
+				const {integrationId, account, credential, defaults, grants, runs} = moved.value;
+				await tx.connection.update({
+					where: {id: connectionId},
 					data: {integrationId, account, credential, tools: null},
 				});
-				if (claimed.count === 0) {
-					return false;
-				}
 				await tx.connectionDefault.deleteMany({where: {connectionId}});
 				await tx.connectionDefault.createMany({
 					data: defaults.map((actionId) => ({connectionId, actionId})),
@@ -349,10 +362,12 @@ export async function takeOverConnection(data: {
 						) AS r("id", "collectionId", "action", "recordTitle", "query")
 						WHERE e."id" = r."id"`;
 				}
-				return true;
+				return Ok(true);
 			},
-			// A connection's whole activity log is rewritten in it.
+			// The provider is asked for the account, and the connection's whole activity log is
+			// rewritten, in it.
 			{timeout: 60_000},
 		),
 	);
+	return done.andThen((moved) => moved);
 }

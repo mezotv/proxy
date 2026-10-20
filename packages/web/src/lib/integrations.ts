@@ -84,8 +84,10 @@ export function integrationOf(connection: {
 // with `?error=<id>-unconfigured` when the server lacks what it needs. Started with
 // `?returnTo=welcome`, it comes back to the welcome flow's page for the connection, or its catalog;
 // with `?account=`, as signing in again from a connection does, the service opens on that account
-// where it can, and with `?connection=` the sign-in renews that connection, whatever account it
-// is for.
+// where it can, and with `?connection=` the sign-in renews that connection where its account can't
+// be told apart from another's: the integration says nothing of who signed in (`anonymous`), or
+// the connection was never signed in to. Otherwise the connection of the account signed in to is
+// renewed, or a new one made.
 /** Where signing in to an integration starts, or null for one connected on a form of its own. */
 export function signInPath(
 	integrationId: string,

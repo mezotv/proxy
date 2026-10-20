@@ -54,6 +54,15 @@ describe('BUILT_IN_MCP', () => {
 		}
 	});
 
+	test('the catalog marks exactly the integrations that say nothing of who signed in as anonymous, for the web app', () => {
+		const anonymous: string[] = INTEGRATIONS.filter((integration) => integration.anonymous).map((integration) => integration.id);
+		expect(anonymous.toSorted()).toEqual(
+			BUILT_IN_MCP.filter((builtIn) => !builtIn.account)
+				.map((builtIn) => builtIn.integrationId)
+				.toSorted(),
+		);
+	});
+
 	test('no two integrations take over the same host', () => {
 		const hosts = BUILT_IN_MCP.flatMap(builtInHosts);
 		expect(new Set(hosts).size).toBe(hosts.length);

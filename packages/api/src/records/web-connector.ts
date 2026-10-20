@@ -20,7 +20,7 @@ const MAX_PAGE_CHARACTERS = 100_000;
 type Page = {title: string; content: string};
 
 // One of a provider's tools: its name, what it is called with, and what is made of its answer.
-type ToolUse<T> = {tool: string; args: Record<string, unknown>; answer: (text: string) => Result<T, ApiError>};
+type ToolUse<T> = {tool: string; args: Record<string, string | string[] | number | boolean>; answer: (text: string) => Result<T, ApiError>};
 
 type WebProvider = {
 	server: McpServer;

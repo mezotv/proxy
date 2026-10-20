@@ -23,7 +23,6 @@ afterAll(() => {
 });
 
 mock.module('@proxy/db/connection', () => ({
-	getConnection: mock(),
 	findAccountConnection,
 	createConnection,
 	renewConnection,
@@ -268,6 +267,22 @@ describe('handleConnectCustomMcpRoute', () => {
 			expect(createConnection.mock.calls.at(-1)?.[0]).toMatchObject({integrationId, name: 'Web search', credential: `enc:${JSON.stringify({auth: 'key', key: 'key-1234'})}`});
 		}
 		expect(probeMcpServer).not.toHaveBeenCalled();
+	});
+
+	test("a key in the address, as Exa's own setup writes it, connects the integration with it as its API key", async () => {
+		callMcpTool.mockResolvedValue(Ok('# Example Domain'));
+		const res = await connect({name: 'Web search', url: 'https://mcp.exa.ai/mcp?exaApiKey=key-5678'});
+
+		expect(res.sent).toMatchObject({kind: 'connected', connection: {name: 'Web search', account: 'API key ending 5678'}});
+		expect(createConnection.mock.calls.at(-1)?.[0]).toMatchObject({integrationId: 'exa', credential: `enc:${JSON.stringify({auth: 'key', key: 'key-5678'})}`});
+	});
+
+	test('a token for a built-in integration that takes no key is refused, rather than dropped for a sign-in', async () => {
+		const res = await connect({name: 'Notes', url: 'https://mcp.notion.com/mcp', token: 'secret_1234'});
+
+		expect(res.sent).toMatchObject({error: 'validation_error', message: 'Notion is connected by signing in to it, so leave the token out'});
+		expect(res.cookies).toEqual([]);
+		expect(createConnection).not.toHaveBeenCalled();
 	});
 });
 

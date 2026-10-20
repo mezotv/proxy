@@ -8,10 +8,10 @@ const createConnection = mock();
 const renewConnection = mock();
 const updateConnectionName = mock();
 
-const getConnection = mock();
+const getConnectionWithCredential = mock();
 
 mock.module('@proxy/db/connection', () => ({
-	getConnection,
+	getConnectionWithCredential,
 	findAccountConnection,
 	createConnection,
 	renewConnection,
@@ -109,7 +109,16 @@ async function connectWithKey(body: unknown) {
 	return keyConnectRoute(PARALLEL_MCP)({user, body} as never);
 }
 
-const existing = {id: 'conn-0', integrationId: 'parallel', account: 'Signed in', createdAt: new Date('2026-10-01T00:00:00Z'), tools: null, name: 'Team Parallel', defaults: [{actionId: 'search'}]};
+const existing = {
+	id: 'conn-0',
+	integrationId: 'parallel',
+	account: 'Signed in',
+	createdAt: new Date('2026-10-01T00:00:00Z'),
+	tools: null,
+	name: 'Team Parallel',
+	defaults: [{actionId: 'search'}],
+	credential: 'enc:{}',
+};
 
 beforeEach(() => {
 	mock.clearAllMocks();
@@ -119,7 +128,7 @@ beforeEach(() => {
 	createConnection.mockImplementation(async (data: {integrationId: string; account: string; defaults: string[]; name?: string}) =>
 		Ok({id: 'conn-1', integrationId: data.integrationId, account: data.account, createdAt: new Date(), tools: null, name: data.name ?? null, defaults: data.defaults.map((actionId) => ({actionId}))}),
 	);
-	getConnection.mockResolvedValue(Ok(null));
+	getConnectionWithCredential.mockResolvedValue(Ok(null));
 	renewConnection.mockResolvedValue(Ok(undefined));
 });
 
@@ -159,11 +168,11 @@ describe('handleParallelCallbackRoute', () => {
 	});
 
 	test("begun from a connection's page (`?connection=`), the sign-in gives that connection the new tokens, its name kept", async () => {
-		getConnection.mockResolvedValue(Ok(existing));
+		getConnectionWithCredential.mockResolvedValue(Ok(existing));
 		const {cookie, state} = await start({connection: 'conn-0'});
 		const res = await callback({cookie: cookie?.value ?? '', query: {state, code: 'code-1'}});
 
-		expect(getConnection).toHaveBeenCalledWith('org-1', 'conn-0');
+		expect(getConnectionWithCredential).toHaveBeenCalledWith('org-1', 'conn-0');
 		expect(createConnection).not.toHaveBeenCalled();
 		expect(renewConnection.mock.calls[0]?.[0]).toMatchObject({connectionId: 'conn-0', account: 'Signed in'});
 		expect(updateConnectionName).not.toHaveBeenCalled();
@@ -200,7 +209,7 @@ describe('keyConnectRoute', () => {
 	});
 
 	test("given a connection (`connection`), the key replaces that connection's credential, its name kept", async () => {
-		getConnection.mockResolvedValue(Ok(existing));
+		getConnectionWithCredential.mockResolvedValue(Ok(existing));
 		const connection = (await connectWithKey({connection: 'conn-0', key: 'pk-5678'})).unwrap();
 
 		expect(createConnection).not.toHaveBeenCalled();

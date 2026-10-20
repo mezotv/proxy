@@ -3,7 +3,7 @@ import {z} from 'zod';
 
 import {ApiErr, type ApiError, Do, requirePresent} from '@proxy/utils';
 import {listCollectionEntries} from '@proxy/db/audit';
-import {listCustomMcpConnections, takeOverConnection, type CustomMcpConnectionRow, type MovedRun} from '@proxy/db/connection';
+import {listCustomMcpConnections, takeOverConnection, type CustomMcpConnectionRow, type MovedConnection, type MovedRun} from '@proxy/db/connection';
 import {findIntegration, TOOLS_COLLECTION_ID} from '@proxy/integrations';
 
 import {log, serializeError} from '../observability/log';
@@ -11,9 +11,9 @@ import {encryptSecret} from '../utils/secret-crypto';
 import {readStoredJson} from '../utils/stored-json';
 import {builtInForHost} from './built-in-mcp';
 import {customCredentialSchema} from './custom/custom-mcp';
-import type {BuiltInMcp, ToolParams} from './mcp/built-in';
-import {accountOf, keyAccount, keyAccountOf} from './mcp/mcp-connect';
-import type {McpCredential} from './mcp/mcp-oauth';
+import {keyInAddress, toolParamsSchema, type BuiltInMcp, type ToolParams} from './mcp/built-in';
+import {accountOf, keyAccountOf} from './mcp/mcp-connect';
+import {refreshMcpSignIn, type McpCredential} from './mcp/mcp-oauth';
 import type {McpKeyCredential} from './mcp/mcp-session';
 
 /**
@@ -21,10 +21,11 @@ import type {McpKeyCredential} from './mcp/mcp-session';
  * time the api starts: what was connected by address before becomes a connection of the
  * integration, keeping its id, its name and its activity. Its tools' settings become the
  * integration's actions, never allowing more than before, and its tool runs the integration's
- * requests. A sign-in to the server itself carries over, for the account it is for, and a token
- * typed in as the integration's API key, where it takes one; otherwise the connection waits to be
- * signed in to (`needsSignIn`). Done once per connection, however many servers start at once
- * (`takeOverConnection`).
+ * requests. A sign-in to the server itself carries over, for the account it is for, and a key the
+ * integration takes, typed in or in the address; otherwise the connection waits to be signed in to
+ * (`needsSignIn`). A server reached with nothing at all stays custom. Done once per connection,
+ * however many servers start at once (`takeOverConnection`), and tried again on the next start
+ * where it failed.
  */
 
 type Grant = {agentId: string; actionId: string; allowed: boolean};
@@ -57,8 +58,6 @@ export function movedPermissions(builtIn: BuiltInMcp, actionIds: string[], conne
 	return {defaults, grants};
 }
 
-const paramsSchema = z.record(z.string(), z.unknown());
-
 /** A tool run as the integration logs its own requests; null for a tool it has nothing for, which stays a tool run. */
 export function movedRun(builtIn: BuiltInMcp, entry: {id: string; action: string; query: string | null}): MovedRun | null {
 	const run = builtIn.tools[entry.action]?.run;
@@ -67,7 +66,7 @@ export function movedRun(builtIn: BuiltInMcp, entry: {id: string; action: string
 	}
 	// Params cut short in the log aren't JSON any more, and are left out.
 	const json = Result.wrap((): unknown => JSON.parse(entry.query ?? 'null'));
-	const params: ToolParams = json.isOk() ? (paramsSchema.safeParse(json.value).data ?? null) : null;
+	const params: ToolParams = json.isOk() ? (toolParamsSchema.safeParse(json.value).data ?? null) : null;
 	const moved = run(params);
 	return {id: entry.id, collectionId: moved.collectionId, action: moved.operation, recordTitle: moved.title ?? null, query: moved.query ?? null};
 }
@@ -77,61 +76,108 @@ function serverAddress(url: string): string | null {
 	return URL.canParse(url) ? `${new URL(url).origin}${new URL(url).pathname.replace(/\/$/, '')}` : null;
 }
 
+type Carried = McpCredential | McpKeyCredential;
+
+type MovedCredential = {kind: 'moved'; credential: Carried | null} | {kind: 'stays'};
+
 /**
- * The credential of a custom connection as the integration keeps one: a sign-in to the
- * integration's own server, through its own authorization server, or a token typed in as the
- * integration's API key, where it takes one and the token is a bare one. Null for anything else,
- * which has to be signed in to again.
+ * What a custom connection's credential becomes as the integration keeps one (`moved`): a sign-in
+ * to the integration's own server, through its own authorization server, or a key the integration
+ * takes, typed in as a bare token or carried in the address (`keyInAddress`); null for anything
+ * else, which has to be signed in to again. A server reached with nothing at all, as Parallel's
+ * keyless one is, can't be reached so by the integration, so the connection stays custom
+ * (`stays`) rather than stop working. A credential that can't be read, as after a change of
+ * `ENCRYPTION_KEY`, is an error, the connection left as it is until it can be.
  */
-export function movedCredential(builtIn: BuiltInMcp, stored: string | null): McpCredential | McpKeyCredential | null {
-	const read = readStoredJson(stored ?? '', customCredentialSchema);
-	if (read.isErr() || read.value.auth === 'none') {
-		return null;
-	}
-	const custom = read.value;
-	if (custom.auth === 'token') {
-		return builtIn.apiKey && !/\s/.test(custom.token) ? {auth: 'key', key: custom.token} : null;
-	}
-	if (serverAddress(custom.url) !== serverAddress(builtIn.server.url) || custom.server.tokenUrl !== builtIn.server.tokenUrl) {
-		return null;
-	}
-	return {clientId: custom.clientId, accessToken: custom.accessToken, refreshToken: custom.refreshToken, expiresAt: custom.expiresAt};
+export function movedCredential(builtIn: BuiltInMcp, stored: string | null): Result<MovedCredential, ApiError> {
+	return Do<MovedCredential, ApiError>(($): MovedCredential => {
+		if (stored === null) {
+			return {kind: 'moved', credential: null};
+		}
+		const custom = $(readStoredJson(stored, customCredentialSchema));
+		const inAddress = URL.canParse(custom.url) ? keyInAddress(builtIn, new URL(custom.url)) : null;
+		if (inAddress) {
+			return {kind: 'moved', credential: {auth: 'key', key: inAddress}};
+		}
+		if (custom.auth === 'none') {
+			return {kind: 'stays'};
+		}
+		if (custom.auth === 'token') {
+			const bare = builtIn.apiKey && !/\s/.test(custom.token);
+			return {kind: 'moved', credential: bare ? {auth: 'key', key: custom.token} : null};
+		}
+		if (serverAddress(custom.url) !== serverAddress(builtIn.server.url) || custom.server.tokenUrl !== builtIn.server.tokenUrl) {
+			return {kind: 'moved', credential: null};
+		}
+		const {clientId, accessToken, refreshToken, expiresAt} = custom;
+		return {kind: 'moved', credential: {clientId, accessToken, refreshToken, expiresAt}};
+	});
 }
 
-// The account as signing in again would find it, or the key's; else the server's address, until
-// it is signed in to.
-async function movedAccount(builtIn: BuiltInMcp, credential: McpCredential | McpKeyCredential | null, address: string): Promise<string> {
-	if (!credential) {
-		return address;
-	}
-	if ('key' in credential) {
-		return (await keyAccountOf(builtIn, credential.key)).unwrapOr(keyAccount(credential.key));
-	}
-	return (await accountOf(builtIn, {accessToken: credential.accessToken, workspaceName: null})).unwrapOr(address);
+// Nothing carried over: the server's address as the account, until it is signed in to.
+function unsignedIn(address: string): {account: string; credential: null} {
+	return {account: address, credential: null};
 }
 
-/** Moves one custom connection over; `Ok(false)` when another server already did. */
+/**
+ * The account as signing in again would find it, or the key's, and the credential to keep: a
+ * sign-in's tokens refreshed first, where the provider names the account, so they work for asking
+ * it and the workspace comes with them, as Notion names it only beside its tokens. A credential the
+ * provider turns down carries nothing over; any other failure is an error, the move tried again
+ * on the next start, so the account is never left one a later sign-in wouldn't find.
+ */
+export function movedAccount(builtIn: BuiltInMcp, credential: Carried | null, address: string): Promise<Result<{account: string; credential: Carried | null}, ApiError>> {
+	return Do(async ($) => {
+		if (!credential) {
+			return unsignedIn(address);
+		}
+		if ('key' in credential) {
+			const account = await keyAccountOf(builtIn, credential.key);
+			if (account.isErr() && account.error.kind === 'credentials_rejected') {
+				return unsignedIn(address);
+			}
+			return {account: $(account), credential};
+		}
+		if (!builtIn.account) {
+			return {account: $(await accountOf(builtIn, {accessToken: credential.accessToken, workspaceName: null})), credential};
+		}
+		const refreshed = await refreshMcpSignIn(builtIn.server, credential);
+		if (refreshed.isErr() && refreshed.error.kind === 'credentials_rejected') {
+			return unsignedIn(address);
+		}
+		const signIn = $(refreshed);
+		const account = await accountOf(builtIn, {accessToken: signIn.credential.accessToken, workspaceName: signIn.workspaceName});
+		if (account.isErr() && account.error.kind === 'credentials_rejected') {
+			return unsignedIn(address);
+		}
+		return {account: $(account), credential: signIn.credential};
+	});
+}
+
+/** Moves one custom connection over; `Ok(false)` when another server already did, or it stays custom. */
 export function takeOver(connection: CustomMcpConnectionRow, builtIn: BuiltInMcp): Promise<Result<boolean, ApiError>> {
 	return Do(async ($) => {
 		const integration = $(requirePresent(findIntegration(builtIn.integrationId), ApiErr.internalError(new Error(`No integration ${builtIn.integrationId}`))));
-		const credential = movedCredential(builtIn, connection.credential);
-		const account = await movedAccount(builtIn, credential, connection.account);
+		const carried = $(movedCredential(builtIn, connection.credential));
+		if (carried.kind === 'stays') {
+			return false;
+		}
 		const permissions = movedPermissions(
 			builtIn,
 			integration.actions.map((action) => action.id),
 			{listed: listedTools(connection.tools), defaults: connection.defaults.map((stored) => stored.actionId), grants: connection.agentGrants},
 		);
 		const entries = $(await listCollectionEntries(connection.id, TOOLS_COLLECTION_ID));
-		return $(
-			await takeOverConnection({
-				connectionId: connection.id,
-				integrationId: builtIn.integrationId,
-				account,
-				credential: credential ? $(encryptSecret(JSON.stringify(credential))) : null,
-				...permissions,
-				runs: entries.flatMap((entry) => movedRun(builtIn, entry) ?? []),
-			}),
-		);
+		const runs = entries.flatMap((entry) => movedRun(builtIn, entry) ?? []);
+		// Only once the connection is locked, so two servers starting at once don't both refresh its
+		// tokens; it asks nothing of the database, which the lock holds a connection of.
+		const move = () =>
+			Do<MovedConnection, ApiError>(async ($$) => {
+				const {account, credential} = $$(await movedAccount(builtIn, carried.credential, connection.account));
+				const encrypted = credential ? $$(encryptSecret(JSON.stringify(credential))) : null;
+				return {integrationId: builtIn.integrationId, account, credential: encrypted, ...permissions, runs};
+			});
+		return $(await takeOverConnection(connection.id, move));
 	});
 }
 

@@ -104,8 +104,10 @@ export function keyAccountOf(builtIn: BuiltInMcp, key: string): Promise<Result<s
 
 /**
  * Connects an integration with an API key, checked with the server first: a new connection, called
- * `name` where the custom MCP form gave one, or `connectionId` given the key in place of its sign-in
- * or key, its name kept. A key the server turns down is `credentials_rejected`.
+ * `name` where the custom MCP form gave one, or an existing one given the key in place of its
+ * sign-in or key, its name kept: the one of the key's account, or `connectionId` where its account
+ * can't be told apart from another's (`saveConnection`). A key the server turns down is
+ * `credentials_rejected`.
  */
 export function connectWithKey(builtIn: BuiltInMcp, orgId: string, args: {name?: string; key: string; connectionId: string | null}): Promise<Result<ConnectionRow, ApiError>> {
 	return Do(async ($) => {

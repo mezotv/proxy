@@ -58,7 +58,7 @@ export function ConnectionPage() {
 		? 'needed'
 		: connection.unavailable.length > 0
 			? 'unavailable'
-			: integration.apiKey
+			: integration.anonymous
 				? 'renew'
 				: null;
 	const renew =

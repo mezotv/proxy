@@ -1,4 +1,5 @@
 import type {Result} from 'ts-results-es';
+import {z} from 'zod';
 
 import type {ApiError} from '@proxy/utils';
 import type {IntegrationId} from '@proxy/integrations';
@@ -17,8 +18,11 @@ import type {McpServer} from './mcp-oauth';
 /** What a connection reaches the server with, for naming its account: the access token or API key, and the workspace the sign-in named, where it did. */
 export type McpAccess = {accessToken: string; workspaceName: string | null};
 
+/** Params of a tool run, as the activity log kept them, as JSON. */
+export const toolParamsSchema = z.record(z.string(), z.json());
+
 /** Params of a tool run, as the activity log kept them; null when they were cut short, or not kept. */
-export type ToolParams = Record<string, unknown> | null;
+export type ToolParams = z.infer<typeof toolParamsSchema> | null;
 
 /** A run of a custom server's tool as the integration logs its own: a collection's list, open, write or command. */
 export type MovedToolRun = {collectionId: string; operation: string; title?: string | null; query?: string | null};
@@ -44,8 +48,9 @@ export type BuiltInMcp = {
 	account?: (access: McpAccess) => Promise<Result<string, ApiError>>;
 	// Also connected with an API key, sent as the bearer token (`apiKey` in the catalog): whether
 	// the server takes a key, as only a call with it shows for a server that answers anyone until
-	// a tool is called.
-	apiKey?: {check: (key: string) => Promise<Result<void, ApiError>>};
+	// a tool is called, and the query param a server's address may carry the key in
+	// (`addressParam`), as Exa's own setup writes it: `?exaApiKey=`.
+	apiKey?: {check: (key: string) => Promise<Result<void, ApiError>>; addressParam?: string};
 	// The actions agents get with a new connection.
 	defaults: string[];
 	// The server's tools a custom connection was allowed, by name; any other's settings are dropped.
@@ -57,6 +62,12 @@ export function builtInHosts(builtIn: BuiltInMcp): string[] {
 	return [new URL(builtIn.server.url).host, ...(builtIn.otherHosts ?? [])];
 }
 
+/** The API key a server's address carries in its query, where the integration takes one there. */
+export function keyInAddress(builtIn: BuiltInMcp, url: URL): string | null {
+	const param = builtIn.apiKey?.addressParam;
+	return (param && url.searchParams.get(param)?.trim()) || null;
+}
+
 /** A param's text, trimmed; null for anything else. */
 export function textParam(params: ToolParams, key: string): string | null {
 	const value = params?.[key];
@@ -66,5 +77,6 @@ export function textParam(params: ToolParams, key: string): string | null {
 /** The first text of a list param, as the first page of `urls`. */
 export function firstParam(params: ToolParams, key: string): string | null {
 	const value = params?.[key];
-	return Array.isArray(value) ? textParam({first: value[0]}, 'first') : null;
+	const first = Array.isArray(value) ? value[0] : undefined;
+	return first === undefined ? null : textParam({first}, 'first');
 }
