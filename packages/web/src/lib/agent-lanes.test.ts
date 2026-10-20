@@ -47,9 +47,11 @@ function agent(id: string, name: string, revokedAt: string | null = null): Agent
 }
 
 describe('taskStatus', () => {
-	test('a task is running until it is finished', () => {
-		expect(taskStatus(task({}))).toBe('running');
-		expect(taskStatus(task({finishedAt: '2026-10-16T11:58:00Z'}))).toBe('finished');
+	test('a task is running until it is finished, or a day after it started, abandoned', () => {
+		expect(taskStatus(task({}), now)).toBe('running');
+		expect(taskStatus(task({finishedAt: '2026-10-16T11:58:00Z'}), now)).toBe('finished');
+		expect(taskStatus(task({startedAt: '2026-10-15T12:00:01Z'}), now)).toBe('running');
+		expect(taskStatus(task({startedAt: '2026-10-15T12:00:00Z'}), now)).toBe('abandoned');
 	});
 });
 
@@ -77,6 +79,12 @@ describe('placeTask', () => {
 		expect(open).toMatchObject({left: 0.5, width: 0.5, clipped: false, status: 'running'});
 		expect(done).toMatchObject({left: 0.5, width: 0.25, status: 'finished'});
 		expect(early).toMatchObject({left: 0, width: 0.25, clipped: true});
+	});
+
+	test('a task never finished ends a day after it started', () => {
+		const abandoned = placeTask(task({startedAt: '2026-10-15T11:30:00Z'}), from, now);
+
+		expect(abandoned).toMatchObject({left: 0, width: 0.5, clipped: true, status: 'abandoned'});
 	});
 });
 
@@ -129,6 +137,8 @@ describe('buildLanes', () => {
 			task({id: 't1', agentId: 'a1', denied: 2}),
 			task({id: 't2', agentId: 'a2', finishedAt: '2026-10-16T11:50:00Z'}),
 			task({id: 't3', agentId: 'gone'}),
+			// Abandoned before the window: no part of it.
+			task({id: 't4', agentId: 'a3', startedAt: '2026-10-15T10:00:00Z'}),
 		],
 	};
 

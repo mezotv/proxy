@@ -69,9 +69,6 @@ export type ActivityFilter = {
 	// One task's requests.
 	taskId?: string;
 	outcome?: 'allowed' | 'denied';
-	// Only what was made from `from` until before `to`, ISO instants.
-	from?: string;
-	to?: string;
 };
 
 export function listActivity(filter: ActivityFilter) {

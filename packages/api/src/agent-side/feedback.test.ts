@@ -1,22 +1,15 @@
 import {beforeEach, describe, expect, mock, test} from 'bun:test';
-import {Err, Ok} from 'ts-results-es';
-
-import {ApiErr} from '@proxy/utils';
+import {Ok} from 'ts-results-es';
 
 const saveAgentFeedback = mock();
 
 mock.module('@proxy/db/feedback', () => ({saveAgentFeedback}));
-
-const requireTask = mock();
-
-mock.module('./tasks', () => ({requireTask, requireOpenTask: mock(), startAgentTask: mock(), finishAgentTask: mock(), listAgentOpenTasks: mock()}));
 
 const agent = {agentId: 'agent-1', orgId: 'org-1', providerId: 'claude', name: 'Claude', experiments: []};
 
 beforeEach(() => {
 	mock.clearAllMocks();
 	saveAgentFeedback.mockResolvedValue(Ok(undefined));
-	requireTask.mockResolvedValue(Ok({id: 'task-1'}));
 });
 
 describe('sendAgentFeedback', () => {
@@ -35,7 +28,6 @@ describe('sendAgentFeedback', () => {
 			via: 'mcp',
 			taskId: null,
 		});
-		expect(requireTask).not.toHaveBeenCalled();
 	});
 
 	test('without a connection or a tool, keeps none', async () => {
@@ -45,16 +37,12 @@ describe('sendAgentFeedback', () => {
 		expect(saveAgentFeedback).toHaveBeenCalledWith(expect.objectContaining({connectionId: null, tool: null, via: 'web'}));
 	});
 
-	test('keeps the task it names once it is the agent’s, finished or not', async () => {
+	test('keeps the task it names as it was given, one that was never started too', async () => {
 		const {sendAgentFeedback} = await import('./feedback');
-		await sendAgentFeedback({agent, via: 'mcp'}, {message: 'read answered twice', task: 'task-1'});
-		requireTask.mockResolvedValue(Err(ApiErr.notFound('task', 'task-9')));
-		const unknown = await sendAgentFeedback({agent, via: 'mcp'}, {message: 'read answered twice', task: 'task-9'});
+		const result = await sendAgentFeedback({agent, via: 'mcp'}, {message: 'start_task answered an id read refuses', task: 'task-9'});
 
-		expect(requireTask).toHaveBeenCalledWith(agent, 'task-1');
-		expect(saveAgentFeedback).toHaveBeenCalledWith(expect.objectContaining({taskId: 'task-1'}));
-		expect(unknown.unwrapErr()).toMatchObject({kind: 'not_found', resource: 'task'});
-		expect(saveAgentFeedback).toHaveBeenCalledTimes(1);
+		expect(result.unwrap()).toEqual({sent: true});
+		expect(saveAgentFeedback).toHaveBeenCalledWith(expect.objectContaining({taskId: 'task-9'}));
 	});
 
 	test('an empty or overlong message is refused in words the agent can act on', async () => {

@@ -1,9 +1,10 @@
+import {taskEndedAt} from '@proxy/utils/tasks';
 import type {ActivityLanes, LaneTask} from '@/client/schemas';
 import type {AgentLogin} from '@/lib/types';
 
 // The home page's lanes: one per agent, its tasks laid along the time up to now, so the person
 // sees who is doing what for them. A task is a bar from when the agent started it to when it
-// finished it, or to now while it is under way; it says which services it used and what was
+// finished it, or gave it up, or to now while it is under way; it says which services it used and what was
 // refused. Nothing here knows what a task depends on, only when it ran and what was done for it.
 
 // The windows on offer, each a stretch of time ending now. Zooming goes between and beyond them.
@@ -72,11 +73,26 @@ function describeMinutes(minutes: number): string {
 	return hours % 24 === 0 ? `${days}d` : `${days}d ${hours % 24}h`;
 }
 
-// A task is running until the agent calls it finished.
-export type TaskStatus = 'running' | 'finished';
+// A task is running until the agent calls it finished, or until a day after it started, when one
+// never finished is taken as abandoned (@proxy/utils/tasks).
+export type TaskStatus = 'running' | 'finished' | 'abandoned';
 
-export function taskStatus(task: LaneTask): TaskStatus {
-	return task.finishedAt === null ? 'running' : 'finished';
+// When the task ended, if it has by `now`.
+function endedAt(task: LaneTask, now: Date): Date | null {
+	return taskEndedAt(
+		{
+			startedAt: new Date(task.startedAt),
+			finishedAt: task.finishedAt === null ? null : new Date(task.finishedAt),
+		},
+		now,
+	);
+}
+
+export function taskStatus(task: LaneTask, now: Date): TaskStatus {
+	if (task.finishedAt !== null) {
+		return 'finished';
+	}
+	return endedAt(task, now) === null ? 'running' : 'abandoned';
 }
 
 // The least of the lane a bar takes, so a task done in seconds is still there to see and open. A
@@ -98,13 +114,10 @@ export function placeTask(task: LaneTask, from: Date, now: Date): PlacedTask {
 	const span = Math.max(now.getTime() - from.getTime(), 1);
 	const startedAt = new Date(task.startedAt).getTime();
 	const start = Math.max(startedAt, from.getTime());
-	const end = Math.min(
-		task.finishedAt === null ? now.getTime() : new Date(task.finishedAt).getTime(),
-		now.getTime(),
-	);
+	const end = Math.min(endedAt(task, now)?.getTime() ?? now.getTime(), now.getTime());
 	const left = (start - from.getTime()) / span;
 	const width = Math.max((end - start) / span, 0);
-	return {task, status: taskStatus(task), left, width, clipped: startedAt < from.getTime()};
+	return {task, status: taskStatus(task, now), left, width, clipped: startedAt < from.getTime()};
 }
 
 // Where a bar ends on the lane, and where it starts, its least width counted back from its end.
@@ -182,8 +195,9 @@ export function buildLanes(answer: ActivityLanes, minutes: number, agents: Agent
 	const from = windowStart(minutes, now);
 	const byAgent = new Map<string, PlacedTask[]>();
 	for (const task of answer.tasks) {
-		// A task finished before the window has no place in it.
-		if (task.finishedAt !== null && new Date(task.finishedAt) < from) {
+		// A task that ended before the window has no place in it.
+		const ended = endedAt(task, now);
+		if (ended !== null && ended < from) {
 			continue;
 		}
 		byAgent.set(task.agentId, [...(byAgent.get(task.agentId) ?? []), placeTask(task, from, now)]);

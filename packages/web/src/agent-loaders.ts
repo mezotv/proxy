@@ -10,7 +10,13 @@ import {
 } from '@/client/agent-client';
 import type {DataRecord} from '@/lib/types';
 import {isNotFoundError, isUnauthenticatedError} from '@/client/me-client';
-import {opensWithoutTask, START_TASK_PATH, storedAgentTask} from '@/lib/agent-task';
+import {
+	clearAgentTask,
+	isTaskRefusal,
+	opensWithoutTask,
+	START_TASK_PATH,
+	storedAgentTask,
+} from '@/lib/agent-task';
 import {fetchErrorToResponse} from '@/lib/loader-utils';
 
 // The agent side's pages. Every records request is made for the task the agent is on, checked and
@@ -36,7 +42,13 @@ function unwrapAgentResult<T>(result: Result<T, FetchError>): T {
 
 export type Outcome<T> = {kind: 'ok'; value: T} | {kind: 'denied'} | {kind: 'missing'};
 
+// A run refused for its task, one another tab finished or a day left abandoned, lets the task go
+// and sends the agent to choose or start another, rather than show the page as refused or missing.
 function toOutcome<T>(result: Result<T, FetchError>): Outcome<T> {
+	if (result.isErr() && isTaskRefusal(result.error)) {
+		clearAgentTask();
+		throw redirect(START_TASK_PATH);
+	}
 	if (result.isErr() && result.error.kind === 'http' && result.error.status === 403) {
 		return {kind: 'denied'};
 	}

@@ -79,11 +79,11 @@ describe('handleActivityLanesRoute', () => {
 });
 
 describe('handleListActivityRoute', () => {
-	test('narrows to one outcome and a span of time', async () => {
+	test('narrows to one outcome', async () => {
 		const {handleListActivityRoute} = await import('./route');
-		await handleListActivityRoute(makeRequest({outcome: 'denied', from: '2026-10-14T00:00:00+02:00', to: '2026-10-15T00:00:00+02:00'}) as never);
+		await handleListActivityRoute(makeRequest({outcome: 'denied'}) as never);
 
-		expect(listAuditEntries).toHaveBeenCalledWith('org-1', {outcome: 'denied', from: new Date('2026-10-13T22:00:00Z'), to: new Date('2026-10-14T22:00:00Z')}, 500);
+		expect(listAuditEntries).toHaveBeenCalledWith('org-1', {outcome: 'denied'}, 500);
 	});
 
 	test('what Personal Agent Proxy did itself is the entries without an agent', async () => {

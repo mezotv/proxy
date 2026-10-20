@@ -1,4 +1,4 @@
-import {beforeEach, describe, expect, mock, test} from 'bun:test';
+import {afterEach, beforeEach, describe, expect, mock, setSystemTime, test} from 'bun:test';
 import {Ok} from 'ts-results-es';
 
 const createAgentTask = mock();
@@ -76,6 +76,10 @@ describe('finishAgentTask', () => {
 });
 
 describe('requireOpenTask', () => {
+	// Three hours after the task started.
+	beforeEach(() => setSystemTime(new Date('2026-10-16T12:00:00Z')));
+	afterEach(() => setSystemTime());
+
 	test('answers the agent’s task while it is under way', async () => {
 		const {requireOpenTask} = await import('./tasks');
 		const result = await requireOpenTask(agent, 'task-1');
@@ -84,20 +88,33 @@ describe('requireOpenTask', () => {
 		expect(result.unwrap()).toBe(row);
 	});
 
-	test('a task the agent does not have is not found; one finished is refused, saying to start a new one', async () => {
-		const {requireOpenTask, requireTask} = await import('./tasks');
+	test('a task the agent does not have is not found; one finished is refused as a conflict, saying to start a new one', async () => {
+		const {requireOpenTask} = await import('./tasks');
 		getAgentTask.mockResolvedValue(Ok(null));
 		const unknown = await requireOpenTask(agent, 'task-9');
 		getAgentTask.mockResolvedValue(Ok(finishedRow));
 		const finished = await requireOpenTask(agent, 'task-1');
-		const finishedButKnown = await requireTask(agent, 'task-1');
 
 		expect(unknown.unwrapErr()).toMatchObject({kind: 'not_found', resource: 'task', id: 'task-9'});
 		expect(finished.unwrapErr()).toEqual({
-			kind: 'validation_error',
-			statusCode: 400,
+			kind: 'conflict',
+			statusCode: 409,
 			message: 'Task task-1 (Triage inbox) is finished. Start a new task for what you are doing now, and give its id as task.',
 		});
-		expect(finishedButKnown.unwrap()).toBe(finishedRow);
+	});
+
+	test('a task never finished is abandoned a day after it started', async () => {
+		const {requireOpenTask} = await import('./tasks');
+		setSystemTime(new Date('2026-10-17T08:59:59Z'));
+		const lastSecond = await requireOpenTask(agent, 'task-1');
+		setSystemTime(new Date('2026-10-17T09:00:00Z'));
+		const abandoned = await requireOpenTask(agent, 'task-1');
+
+		expect(lastSecond.unwrap()).toBe(row);
+		expect(abandoned.unwrapErr()).toEqual({
+			kind: 'conflict',
+			statusCode: 409,
+			message: 'Task task-1 (Triage inbox) was started over a day ago and never finished, so it is taken as abandoned. Start a new task for what you are doing now, and give its id as task.',
+		});
 	});
 });

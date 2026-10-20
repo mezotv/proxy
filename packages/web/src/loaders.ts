@@ -12,7 +12,6 @@ import {getMe} from '@/client/me-client';
 import {getAuthorizationRequest} from '@/client/oauth-client';
 import {listRecords} from '@/client/records-client';
 import {INFO_INTEGRATION_ID} from '@proxy/integrations';
-import {daySpan} from '@/lib/activity-days';
 import {LOADED_MINUTES, windowStart} from '@/lib/agent-lanes';
 import {findIntegration} from '@/lib/integrations';
 import {unwrapLoaderResult, unwrapOrNull} from '@/lib/loader-utils';
@@ -132,8 +131,6 @@ export async function activityLoader({request}: {request: Request}) {
 		connectionId: params.get('connection') ?? undefined,
 		taskId: params.get('task') ?? undefined,
 		outcome: outcome === 'allowed' || outcome === 'denied' ? outcome : undefined,
-		// A day of the home page's graph, on the browser's clock as the graph counts it.
-		...daySpan(params.get('day') ?? ''),
 	};
 	const [activity, connections, agents] = await Promise.all([
 		listActivity(filter),

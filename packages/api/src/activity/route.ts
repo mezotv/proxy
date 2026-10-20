@@ -3,7 +3,7 @@ import {z} from 'zod';
 
 import {type ApiError, Do, parseSchema} from '@proxy/utils';
 import {listAuditEntries, summarizeTaskRequests} from '@proxy/db/audit';
-import {listAgentTasks, listAgentTasksSince} from '@proxy/db/task';
+import {type AgentTaskRow, listAgentTasks, listAgentTasksSince} from '@proxy/db/task';
 
 import type {AuthenticatedRequest} from '../server/middleware/require-auth';
 import {requireUserOrgId} from '../utils/user-org';
@@ -37,9 +37,13 @@ export type ActivityTaskResponse = {
 	goal: string;
 	via: 'web' | 'mcp';
 	startedAt: string;
-	// Null while the agent hasn't called it finished.
+	// Null while the agent hasn't called it finished, abandoned (@proxy/utils/tasks) or not.
 	finishedAt: string | null;
 };
+
+function toActivityTask({createdAt, finishedAt, ...task}: AgentTaskRow): ActivityTaskResponse {
+	return {...task, startedAt: createdAt.toISOString(), finishedAt: finishedAt?.toISOString() ?? null};
+}
 
 // `?agentId=proxy` is what Personal Agent Proxy did itself.
 const PROXY = 'proxy';
@@ -49,9 +53,6 @@ const querySchema = z.object({
 	connectionId: z.string().min(1).optional(),
 	taskId: z.string().min(1).optional(),
 	outcome: z.enum(['allowed', 'denied']).optional(),
-	// Only what was made from `from` until before `to`, as a day on the person's clock is.
-	from: z.iso.datetime({offset: true}).optional(),
-	to: z.iso.datetime({offset: true}).optional(),
 });
 
 /**
@@ -60,22 +61,20 @@ const querySchema = z.object({
  */
 export function handleListActivityRoute(request: AuthenticatedRequest): Promise<Result<{entries: AuditEntryResponse[]; tasks: ActivityTaskResponse[]}, ApiError>> {
 	return Do(async ($) => {
-		const {agentId, connectionId, taskId, outcome, from, to} = $(parseSchema(querySchema, request.query));
+		const {agentId, connectionId, taskId, outcome} = $(parseSchema(querySchema, request.query));
 		const orgId = $(await requireUserOrgId(request));
 		const filter = {
 			...(agentId === undefined ? {} : {agentId: agentId === PROXY ? null : agentId}),
 			...(connectionId === undefined ? {} : {connectionId}),
 			...(taskId === undefined ? {} : {taskId}),
 			...(outcome === undefined ? {} : {outcome}),
-			...(from === undefined ? {} : {from: new Date(from)}),
-			...(to === undefined ? {} : {to: new Date(to)}),
 		};
 		const rows = $(await listAuditEntries(orgId, filter, MAX_ENTRIES));
 		const taskIds = new Set([...rows.flatMap((row) => (row.taskId === null ? [] : [row.taskId])), ...(taskId === undefined ? [] : [taskId])]);
 		const tasks = $(await listAgentTasks(orgId, [...taskIds]));
 		return {
 			entries: rows.map(({createdAt, ...entry}) => ({...entry, at: createdAt.toISOString()})),
-			tasks: tasks.map(({createdAt, finishedAt, ...task}) => ({...task, startedAt: createdAt.toISOString(), finishedAt: finishedAt?.toISOString() ?? null})),
+			tasks: tasks.map(toActivityTask),
 		};
 	});
 }
@@ -117,7 +116,7 @@ export function handleActivityLanesRoute(request: AuthenticatedRequest): Promise
 				rows.map((row) => row.id),
 			),
 		);
-		const tasks = rows.map(({createdAt, finishedAt, ...task}) => {
+		const tasks = rows.map((task) => {
 			const own = requests.filter((row) => row.taskId === task.id);
 			const used = new Map<string, {count: number; first: Date}>();
 			for (const row of own) {
@@ -125,9 +124,7 @@ export function handleActivityLanesRoute(request: AuthenticatedRequest): Promise
 				used.set(row.connectionId, {count: known.count + row.count, first: row.first < known.first ? row.first : known.first});
 			}
 			return {
-				...task,
-				startedAt: createdAt.toISOString(),
-				finishedAt: finishedAt?.toISOString() ?? null,
+				...toActivityTask(task),
 				requests: own.reduce((total, row) => total + row.count, 0),
 				denied: own.filter((row) => row.outcome === 'denied').reduce((total, row) => total + row.count, 0),
 				connectionIds: [...used.entries()].sort((a, b) => b[1].count - a[1].count || a[1].first.getTime() - b[1].first.getTime()).map(([connectionId]) => connectionId),

@@ -2,6 +2,7 @@ import {Err, type Result} from 'ts-results-es';
 import {z} from 'zod';
 
 import {ApiErr, type ApiError, Do, parseSchema, requirePresent} from '@proxy/utils';
+import {taskEndedAt} from '@proxy/utils/tasks';
 import type {SignedInAgent} from '@proxy/db/agent';
 import {type AgentTaskRow, createAgentTask, finishAgentTask as markAgentTaskFinished, getAgentTask, listOpenAgentTasks} from '@proxy/db/task';
 
@@ -65,20 +66,25 @@ export function finishAgentTask(caller: AgentCaller, args: unknown): Promise<Res
 	});
 }
 
-/** The agent's task `taskId`, finished or not; unknown, or another agent's, is not found. */
-export function requireTask(agent: SignedInAgent, taskId: string): Promise<Result<AgentTaskRow, ApiError>> {
-	return Do(async ($) => {
-		const task = $(await getAgentTask(agent.orgId, agent.agentId, taskId));
-		return $(requirePresent(task, ApiErr.notFound('task', taskId)));
-	});
-}
-
-/** The agent's task `taskId` for a call made for it: one finished already is refused, saying to start a new one. */
+/**
+ * The agent's task `taskId` for a call made for it; unknown, or another agent's, is not found. One
+ * finished already, or abandoned (@proxy/utils/tasks), is refused as a conflict, saying to start a
+ * new one, so the agent pages can tell it from any other refusal of the call.
+ */
 export function requireOpenTask(agent: SignedInAgent, taskId: string): Promise<Result<AgentTaskRow, ApiError>> {
 	return Do(async ($) => {
-		const task = $(await requireTask(agent, taskId));
+		const task = $(requirePresent($(await getAgentTask(agent.orgId, agent.agentId, taskId)), ApiErr.notFound('task', taskId)));
 		if (task.finishedAt !== null) {
-			return $(Err(ApiErr.validationError(`Task ${taskId} (${task.title}) is finished. Start a new task for what you are doing now, and give its id as task.`)));
+			return $(Err(ApiErr.conflict(`Task ${taskId} (${task.title}) is finished. Start a new task for what you are doing now, and give its id as task.`)));
+		}
+		if (taskEndedAt({startedAt: task.createdAt, finishedAt: null}, new Date()) !== null) {
+			return $(
+				Err(
+					ApiErr.conflict(
+						`Task ${taskId} (${task.title}) was started over a day ago and never finished, so it is taken as abandoned. Start a new task for what you are doing now, and give its id as task.`,
+					),
+				),
+			);
 		}
 		return task;
 	});

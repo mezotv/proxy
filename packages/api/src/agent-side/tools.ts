@@ -150,9 +150,11 @@ function log(run: ToolRun, outcome: 'allowed' | 'denied', title: string | null, 
  */
 export function runAgentTool(caller: TaskCaller, connectionId: string, toolName: string, params: unknown, options: {readOnly?: boolean} = {}): Promise<Result<ToolResult, ApiError>> {
 	return Do(async ($) => {
-		const agent = $(await requireAgent(caller.agent));
-		$(await requireOpenTask(caller.agent, caller.taskId));
-		const {connection, integration, connector} = $(await loadConnection(caller.agent.orgId, connectionId));
+		// None of the three needs another's answer, so they are read at once; a refusal still comes in this order.
+		const [agentRead, taskRead, connectionRead] = await Promise.all([requireAgent(caller.agent), requireOpenTask(caller.agent, caller.taskId), loadConnection(caller.agent.orgId, connectionId)]);
+		const agent = $(agentRead);
+		$(taskRead);
+		const {connection, integration, connector} = $(connectionRead);
 		const tool = $(requirePresent(findTool(integration, toolName), ApiErr.notFound('tool', toolName)));
 		if (options.readOnly !== undefined && options.readOnly !== tool.readOnly) {
 			return $(Err(ApiErr.validationError(tool.readOnly ? `${tool.name} only reads: use read for it` : `${tool.name} changes something: use run for it`)));

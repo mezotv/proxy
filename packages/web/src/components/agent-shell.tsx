@@ -7,7 +7,7 @@ import {Button} from '@proxy/ui/components/button';
 import {cn} from '@proxy/ui/lib/utils';
 import {useAgentMe} from '@/hooks/use-agent-target';
 import {agentErrorMessage} from '@/lib/agent-errors';
-import {clearAgentTask, START_TASK_PATH, storedAgentTask} from '@/lib/agent-task';
+import {clearAgentTask, START_TASK_PATH, useStoredAgentTask} from '@/lib/agent-task';
 
 // The agent side's frame. Built for a model driving a browser: no sidebar, no icon-only controls
 // and nothing that only shows on hover, so every action is a labeled link or button on the page.
@@ -22,7 +22,7 @@ export function AgentShell({children, feedback = true}: {children: ReactNode; fe
 		...(connectionId ? {connection: connectionId} : {}),
 		...(toolName ? {tool: toolName} : {}),
 	}).toString();
-	const task = storedAgentTask();
+	const task = useStoredAgentTask();
 
 	return (
 		<div className="flex min-h-dvh w-full flex-col bg-background text-foreground">

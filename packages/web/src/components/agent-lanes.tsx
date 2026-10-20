@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 import {Link} from 'react-router';
 import {getActivityLanes} from '@/client/agents-client';
 import type {ActivityLanes} from '@/client/schemas';
@@ -66,7 +66,6 @@ export function AgentLanes({
 	// part arrives with the next reading; zoomed in, it has everything already.
 	const [answer, setAnswer] = useState(initial);
 	const mounted = useRef(false);
-	const timeline = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
 		let gone = false;
@@ -97,12 +96,9 @@ export function AgentLanes({
 	}, [minutes]);
 
 	// The wheel with Ctrl or Cmd held, which a pinch on a trackpad also sends, zooms rather than
-	// scrolls the page; listened to by hand, since React's wheel listener can't stop the scroll.
-	useEffect(() => {
-		const element = timeline.current;
-		if (!element) {
-			return;
-		}
+	// scrolls the page; listened to by hand, since React's wheel listener can't stop the scroll. On
+	// the timeline whenever it is there, which it isn't while there is nothing to show.
+	const listenForZoom = useCallback((element: HTMLDivElement) => {
 		const onWheel = (event: WheelEvent) => {
 			if (!event.ctrlKey && !event.metaKey) {
 				return;
@@ -154,7 +150,7 @@ export function AgentLanes({
 				</Select>
 			</div>
 			<div
-				ref={timeline}
+				ref={listenForZoom}
 				className="w-full divide-y overflow-hidden rounded-xl border bg-card shadow-xs"
 			>
 				{lanes.map((lane) => (
@@ -217,16 +213,17 @@ function LaneRow({
 	);
 }
 
-// Soft blue while a task is under way, gray once it is done, and soft orange where a request
-// was refused, which is the one that may need the person.
-// Soft blue while a task is under way, gray once it is done, and soft orange where a request
-// was refused, which is the one that may need the person: the bar's fill, and its words.
+// Soft blue while a task is under way, gray once it is done or given up, and soft orange where a
+// request was refused, which is the one that may need the person: the bar's fill, and its words.
+const BAR_DONE = {fill: 'bg-muted/70 group-hover:bg-muted', text: 'text-muted-foreground'};
+
 const BAR_STATUS: Record<PlacedTask['status'], {fill: string; text: string}> = {
 	running: {
 		fill: 'bg-sky-500/10 group-hover:bg-sky-500/15',
 		text: 'text-sky-900 dark:text-sky-200',
 	},
-	finished: {fill: 'bg-muted/70 group-hover:bg-muted', text: 'text-muted-foreground'},
+	finished: BAR_DONE,
+	abandoned: BAR_DONE,
 };
 
 const BAR_BLOCKED = {

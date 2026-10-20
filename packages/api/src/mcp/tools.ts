@@ -230,18 +230,19 @@ function call(signedIn: SignedInAgent, name: string, args: Record<string, unknow
 		if (name === 'send_feedback') {
 			return $(await sendAgentFeedback(caller, args));
 		}
-		// Every other call is for a task of the agent's that is still under way.
+		// Every other call is for a task of the agent's that is still under way, checked beside the
+		// call's own reads.
 		const taskId = $(taskOf(args));
 		if (name === 'list_connections') {
-			$(await requireOpenTask(signedIn, taskId));
-			const {connections} = $(await listAgentConnections(signedIn));
-			return {connections: connections.map(connectionSummary)};
+			const [task, listed] = await Promise.all([requireOpenTask(signedIn, taskId), listAgentConnections(signedIn)]);
+			$(task);
+			return {connections: $(listed).connections.map(connectionSummary)};
 		}
 		if (name === 'list_tools') {
-			$(await requireOpenTask(signedIn, taskId));
 			const {connection} = $(parseSchema(connectionArgs, args));
-			const tools = $(await listAgentTools(signedIn, connection));
-			return {connection, tools: tools.map(toolSummary)};
+			const [task, tools] = await Promise.all([requireOpenTask(signedIn, taskId), listAgentTools(signedIn, connection)]);
+			$(task);
+			return {connection, tools: $(tools).map(toolSummary)};
 		}
 		if (name === 'read' || name === 'run') {
 			const {connection, tool, params} = $(parseSchema(runArgs, args));

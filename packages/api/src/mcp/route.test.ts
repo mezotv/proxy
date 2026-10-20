@@ -164,7 +164,7 @@ describe('handleMcpRoute', () => {
 		const taskless = await post(rpc('tools/call', {name: 'list_connections', arguments: {}}));
 		requireOpenTask.mockResolvedValue(Err(ApiErr.notFound('task', 'task-9')));
 		const unknown = await post(rpc('tools/call', {name: 'list_tools', arguments: {task: 'task-9', connection: 'mail-1'}}));
-		requireOpenTask.mockResolvedValue(Err(ApiErr.validationError('Task task-1 (Triage inbox) is finished. Start a new task for what you are doing now, and give its id as task.')));
+		requireOpenTask.mockResolvedValue(Err(ApiErr.conflict('Task task-1 (Triage inbox) is finished. Start a new task for what you are doing now, and give its id as task.')));
 		const finished = await post(rpc('tools/call', {name: 'list_tools', arguments: {task: 'task-1', connection: 'mail-1'}}));
 
 		expect((taskless.body as {result: unknown}).result).toEqual({
@@ -174,7 +174,6 @@ describe('handleMcpRoute', () => {
 		expect((unknown.body as {result: unknown}).result).toEqual({content: [{type: 'text', text: expect.stringContaining('There is no task task-9 for this login. Call start_task')}], isError: true});
 		expect((finished.body as {result: unknown}).result).toEqual({content: [{type: 'text', text: expect.stringContaining('Task task-1 (Triage inbox) is finished')}], isError: true});
 		expect(listAgentConnections).not.toHaveBeenCalled();
-		expect(listAgentTools).not.toHaveBeenCalled();
 	});
 
 	test('read and run go to the agent side over MCP for the task, read only for tools that read', async () => {

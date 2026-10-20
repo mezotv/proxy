@@ -8,7 +8,7 @@ import {Input} from '@proxy/ui/components/input';
 import {Label} from '@proxy/ui/components/label';
 import {Textarea} from '@proxy/ui/components/textarea';
 import {agentErrorMessage} from '@/lib/agent-errors';
-import {clearAgentTask, storeAgentTask, storedAgentTask} from '@/lib/agent-task';
+import {clearAgentTask, storeAgentTask, useStoredAgentTask} from '@/lib/agent-task';
 import type {agentTasksLoader} from '@/agent-loaders';
 import {noticeFromState} from '@/pages/agent/agent-collection-page';
 
@@ -19,7 +19,7 @@ export function AgentTaskPage() {
 	const {tasks} = useLoaderData<typeof agentTasksLoader>();
 	const navigate = useNavigate();
 	const notice = noticeFromState(useLocation().state);
-	const current = storedAgentTask();
+	const current = useStoredAgentTask();
 	const [error, setError] = useState<string | null>(null);
 
 	const workOn = (task: AgentTask) => {

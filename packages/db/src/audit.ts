@@ -63,9 +63,8 @@ export async function logProxyAction(data: {
 }
 
 /**
- * Newest first, optionally only one agent's or one connection's requests, only one task's, only
- * allowed or denied ones, or only those made from `from` until before `to`; an `agentId` of null is
- * what Personal Agent Proxy did itself.
+ * Newest first, optionally only one agent's or one connection's requests, only one task's, or only
+ * allowed or denied ones; an `agentId` of null is what Personal Agent Proxy did itself.
  */
 export async function listAuditEntries(
 	orgId: string,
@@ -74,19 +73,12 @@ export async function listAuditEntries(
 		connectionId?: string;
 		taskId?: string;
 		outcome?: AuditOutcome;
-		from?: Date;
-		to?: Date;
 	},
 	take: number,
 ): Promise<Result<AuditEntryRow[], ApiError>> {
-	const {from, to, ...rest} = filter;
-	const createdAt =
-		from === undefined && to === undefined
-			? {}
-			: {createdAt: {...(from ? {gte: from} : {}), ...(to ? {lt: to} : {})}};
 	return wrapDb(() =>
 		db.auditEntry.findMany({
-			where: {orgId, ...rest, ...createdAt},
+			where: {orgId, ...filter},
 			orderBy: {createdAt: 'desc'},
 			take,
 			select: {

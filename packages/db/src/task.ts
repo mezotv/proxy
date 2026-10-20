@@ -2,6 +2,7 @@ import type {AuditVia} from '@prisma/client';
 import type {Result} from 'ts-results-es';
 
 import {type ApiError, wrapDb} from '@proxy/utils';
+import {TASK_ABANDONED_AFTER_MS} from '@proxy/utils/tasks';
 
 import {db} from '.';
 
@@ -67,14 +68,19 @@ export async function finishAgentTask(
 	});
 }
 
-/** The agent's tasks still under way, newest first. */
+/** The agent's tasks still under way, newest first: none finished, and none abandoned (@proxy/utils/tasks). */
 export async function listOpenAgentTasks(
 	orgId: string,
 	agentId: string,
 ): Promise<Result<AgentTaskRow[], ApiError>> {
 	return wrapDb(() =>
 		db.agentTask.findMany({
-			where: {orgId, agentId, finishedAt: null},
+			where: {
+				orgId,
+				agentId,
+				finishedAt: null,
+				createdAt: {gt: new Date(Date.now() - TASK_ABANDONED_AFTER_MS)},
+			},
 			select: taskSelect,
 			orderBy: {createdAt: 'desc'},
 		}),
@@ -83,7 +89,8 @@ export async function listOpenAgentTasks(
 
 /**
  * The organization's tasks under way at some point since `from`: started before now and not
- * finished before `from`; the newest `take` of them, newest first.
+ * finished before `from`, nor abandoned before it, a day after it started; the newest `take` of
+ * them, newest first.
  */
 export async function listAgentTasksSince(
 	orgId: string,
@@ -92,7 +99,13 @@ export async function listAgentTasksSince(
 ): Promise<Result<AgentTaskRow[], ApiError>> {
 	return wrapDb(() =>
 		db.agentTask.findMany({
-			where: {orgId, OR: [{finishedAt: null}, {finishedAt: {gte: from}}]},
+			where: {
+				orgId,
+				OR: [
+					{finishedAt: {gte: from}},
+					{finishedAt: null, createdAt: {gte: new Date(from.getTime() - TASK_ABANDONED_AFTER_MS)}},
+				],
+			},
 			select: taskSelect,
 			orderBy: {createdAt: 'desc'},
 			take,
