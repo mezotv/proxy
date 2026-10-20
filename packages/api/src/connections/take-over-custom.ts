@@ -13,7 +13,7 @@ import {builtInForHost} from './built-in-mcp';
 import {customCredentialSchema} from './custom/custom-mcp';
 import {keyInAddress, toolParamsSchema, type BuiltInMcp, type ToolParams} from './mcp/built-in';
 import {accountOf, keyAccountOf} from './mcp/mcp-connect';
-import {refreshMcpSignIn, type McpCredential} from './mcp/mcp-oauth';
+import {isExpiring, refreshMcpTokens, type McpCredential} from './mcp/mcp-oauth';
 import type {McpKeyCredential} from './mcp/mcp-session';
 
 /**
@@ -120,13 +120,19 @@ function unsignedIn(address: string): {account: string; credential: null} {
 }
 
 /**
- * The account as signing in again would find it, or the key's, and the credential to keep: a
- * sign-in's tokens refreshed first, where the provider names the account, so they work for asking
- * it and the workspace comes with them, as Notion names it only beside its tokens. A credential the
- * provider turns down carries nothing over; any other failure is an error, the move tried again
- * on the next start, so the account is never left one a later sign-in wouldn't find.
+ * The account as signing in again would find it, or the key's, and the credential to keep. A
+ * sign-in's tokens are refreshed where they ran out, or the provider turns them down, and the
+ * new ones kept (`keep`) before anything else is asked, since the provider may take back the
+ * refresh token they replace. A credential the provider turns down carries nothing over; any other
+ * failure is an error, the move tried again on the next start, so the account is never left one a
+ * later sign-in wouldn't find.
  */
-export function movedAccount(builtIn: BuiltInMcp, credential: Carried | null, address: string): Promise<Result<{account: string; credential: Carried | null}, ApiError>> {
+export function movedAccount(
+	builtIn: BuiltInMcp,
+	credential: Carried | null,
+	address: string,
+	keep: (tokens: McpCredential) => Promise<Result<void, ApiError>>,
+): Promise<Result<{account: string; credential: Carried | null}, ApiError>> {
 	return Do(async ($) => {
 		if (!credential) {
 			return unsignedIn(address);
@@ -138,19 +144,41 @@ export function movedAccount(builtIn: BuiltInMcp, credential: Carried | null, ad
 			}
 			return {account: $(account), credential};
 		}
-		if (!builtIn.account) {
-			return {account: $(await accountOf(builtIn, {accessToken: credential.accessToken, workspaceName: null})), credential};
-		}
-		const refreshed = await refreshMcpSignIn(builtIn.server, credential);
-		if (refreshed.isErr() && refreshed.error.kind === 'credentials_rejected') {
+		// New tokens, kept at once; null once the provider has revoked the sign-in.
+		const refresh = () =>
+			Do<McpCredential | null, ApiError>(async ($$) => {
+				const refreshed = await refreshMcpTokens(builtIn.server, credential);
+				if (refreshed.isErr() && refreshed.error.kind === 'credentials_rejected') {
+					return null;
+				}
+				const tokens = $$(refreshed);
+				$$(await keep(tokens));
+				return tokens;
+			});
+		const current = isExpiring(credential) ? $(await refresh()) : credential;
+		if (!current) {
 			return unsignedIn(address);
 		}
-		const signIn = $(refreshed);
-		const account = await accountOf(builtIn, {accessToken: signIn.credential.accessToken, workspaceName: signIn.workspaceName});
-		if (account.isErr() && account.error.kind === 'credentials_rejected') {
+		const account = await accountOf(builtIn, current.accessToken);
+		if (account.isOk()) {
+			return {account: account.value, credential: current};
+		}
+		if (account.error.kind !== 'credentials_rejected') {
+			return $(account);
+		}
+		if (current !== credential) {
 			return unsignedIn(address);
 		}
-		return {account: $(account), credential: signIn.credential};
+		// Turned down before its time: refreshed once, as using it would be.
+		const renewed = $(await refresh());
+		if (!renewed) {
+			return unsignedIn(address);
+		}
+		const named = await accountOf(builtIn, renewed.accessToken);
+		if (named.isErr() && named.error.kind === 'credentials_rejected') {
+			return unsignedIn(address);
+		}
+		return {account: $(named), credential: renewed};
 	});
 }
 
@@ -170,10 +198,16 @@ export function takeOver(connection: CustomMcpConnectionRow, builtIn: BuiltInMcp
 		const entries = $(await listCollectionEntries(connection.id, TOOLS_COLLECTION_ID));
 		const runs = entries.flatMap((entry) => movedRun(builtIn, entry) ?? []);
 		// Only once the connection is locked, so two servers starting at once don't both refresh its
-		// tokens; it asks nothing of the database, which the lock holds a connection of.
-		const move = () =>
+		// tokens; it asks nothing of the database, which the lock holds a connection of, but keeps
+		// refreshed tokens on the custom connection as it was, so a failed move loses none.
+		const move = (keepCredential: (credential: string) => Promise<void>) =>
 			Do<MovedConnection, ApiError>(async ($$) => {
-				const {account, credential} = $$(await movedAccount(builtIn, carried.credential, connection.account));
+				const keep = (tokens: McpCredential) =>
+					Do<void, ApiError>(async ($k) => {
+						const custom = $k(readStoredJson(connection.credential ?? '', customCredentialSchema));
+						await keepCredential($k(encryptSecret(JSON.stringify({...custom, ...tokens}))));
+					});
+				const {account, credential} = $$(await movedAccount(builtIn, carried.credential, connection.account, keep));
 				const encrypted = credential ? $$(encryptSecret(JSON.stringify(credential))) : null;
 				return {integrationId: builtIn.integrationId, account, credential: encrypted, ...permissions, runs};
 			});

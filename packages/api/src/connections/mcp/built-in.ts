@@ -15,9 +15,6 @@ import type {McpServer} from './mcp-oauth';
  * and runs as the integration's actions and requests.
  */
 
-/** What a connection reaches the server with, for naming its account: the access token or API key, and the workspace the sign-in named, where it did. */
-export type McpAccess = {accessToken: string; workspaceName: string | null};
-
 /** Params of a tool run, as the activity log kept them, as JSON. */
 export const toolParamsSchema = z.record(z.string(), z.json());
 
@@ -41,11 +38,12 @@ export type BuiltInMcp = {
 	server: McpServer;
 	// Hosts beyond the server's own that are the same service, as Parallel's keyless server.
 	otherHosts?: string[];
-	// The account a sign-in or a key is for, as the connection shows it: two sign-ins to the same
+	// The account a sign-in or a key is for, asked with its access token or the key, as the
+	// connection shows it: two sign-ins to the same
 	// account are the same connection. Left out where the provider says nothing of who signed in,
 	// as Exa and Parallel don't: every sign-in or key is a connection of its own, which only its
 	// own page renews.
-	account?: (access: McpAccess) => Promise<Result<string, ApiError>>;
+	account?: (accessToken: string) => Promise<Result<string, ApiError>>;
 	// Also connected with an API key, sent as the bearer token (`apiKey` in the catalog): whether
 	// the server takes a key, as only a call with it shows for a server that answers anyone until
 	// a tool is called, and the query param a server's address may carry the key in

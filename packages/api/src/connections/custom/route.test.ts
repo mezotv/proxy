@@ -294,7 +294,7 @@ describe('handleCustomMcpCallbackRoute', () => {
 		const cookie = `proxy.mcp-state=${encodeURIComponent(begun.cookies[0]?.value ?? '')}`;
 
 		const tokens = {clientId: 'client-1', accessToken: 'access-1', refreshToken: 'refresh-1', expiresAt: null};
-		exchangeMcpCode.mockResolvedValue(Ok({credential: tokens, workspaceName: null}));
+		exchangeMcpCode.mockResolvedValue(Ok(tokens));
 		listMcpTools.mockResolvedValue(Ok([search, publish]));
 		const {handleCustomMcpCallbackRoute} = await import('./route');
 		const res = makeRes();

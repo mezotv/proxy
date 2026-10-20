@@ -59,9 +59,9 @@ const {beginSignIn, handleCallback: handleCustomMcpCallbackRoute} = signInFlow({
 	finish: ({redirectUri, code, verifier, kept}) =>
 		Do(async ($) => {
 			const {server, name} = kept;
-			const signIn = $(await exchangeMcpCode(server, {clientId: kept.clientId, redirectUri, code, verifier}));
-			const tools = $(await listMcpTools(server, signIn.credential.accessToken));
-			const credential: CustomCredential = {auth: 'oauth', url: server.url, server, ...signIn.credential};
+			const tokens = $(await exchangeMcpCode(server, {clientId: kept.clientId, redirectUri, code, verifier}));
+			const tools = $(await listMcpTools(server, tokens.accessToken));
+			const credential: CustomCredential = {auth: 'oauth', url: server.url, server, ...tokens};
 			return {account: mcpAccount(new URL(server.url)), credential, defaults: readOnlyToolNames(tools), tools, name};
 		}),
 });

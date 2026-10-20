@@ -70,16 +70,12 @@ export const mcpCredentialSchema = z.object({
 
 export type McpCredential = z.infer<typeof mcpCredentialSchema>;
 
-/** A finished sign-in: the credential, and the workspace it is for where the server names one, as Notion does. */
-export type McpSignIn = {credential: McpCredential; workspaceName: string | null};
-
 const registrationSchema = z.object({client_id: z.string().min(1)});
 
 const tokensSchema = z.object({
 	access_token: z.string().min(1),
 	refresh_token: z.string().optional(),
 	expires_in: z.number().optional(),
-	workspace_name: z.string().optional(),
 });
 
 /** A server turning a request down is the credential rejected; anything else is the server out of reach. */
@@ -127,7 +123,7 @@ export function mcpAuthorizeUrl(server: McpServer, args: {clientId: string; redi
 	return url.toString();
 }
 
-async function requestTokens(server: McpServer, clientId: string, params: Record<string, string>, previousRefreshToken: string | null): Promise<Result<McpSignIn, ApiError>> {
+async function requestTokens(server: McpServer, clientId: string, params: Record<string, string>, previousRefreshToken: string | null): Promise<Result<McpCredential, ApiError>> {
 	const tokens = await checkedRequest(
 		server.tokenUrl,
 		{
@@ -138,33 +134,25 @@ async function requestTokens(server: McpServer, clientId: string, params: Record
 		{schema: tokensSchema, timeoutMs: TIMEOUT_MS},
 	);
 	return tokens.mapErr(mcpAuthError).map((value) => ({
-		credential: {
-			clientId,
-			accessToken: value.access_token,
-			// A server may keep the refresh token as it is rather than send a new one.
-			refreshToken: value.refresh_token ?? previousRefreshToken,
-			expiresAt: value.expires_in === undefined ? null : new Date(Date.now() + value.expires_in * 1000).toISOString(),
-		},
-		workspaceName: value.workspace_name ?? null,
+		clientId,
+		accessToken: value.access_token,
+		// A server may keep the refresh token as it is rather than send a new one.
+		refreshToken: value.refresh_token ?? previousRefreshToken,
+		expiresAt: value.expires_in === undefined ? null : new Date(Date.now() + value.expires_in * 1000).toISOString(),
 	}));
 }
 
 /** Trades the code the server sent back for the connection's first tokens. */
-export function exchangeMcpCode(server: McpServer, args: {clientId: string; redirectUri: string; code: string; verifier: string}): Promise<Result<McpSignIn, ApiError>> {
+export function exchangeMcpCode(server: McpServer, args: {clientId: string; redirectUri: string; code: string; verifier: string}): Promise<Result<McpCredential, ApiError>> {
 	return requestTokens(server, args.clientId, {grant_type: 'authorization_code', code: args.code, redirect_uri: args.redirectUri, code_verifier: args.verifier}, null);
-}
-
-/** New tokens, and the workspace the server names with them, where it does; turned down once the server revoked the sign-in. */
-export async function refreshMcpSignIn(server: McpServer, credential: McpCredential): Promise<Result<McpSignIn, ApiError>> {
-	if (!credential.refreshToken) {
-		return Err(ApiErr.credentialsRejected());
-	}
-	return requestTokens(server, credential.clientId, {grant_type: 'refresh_token', refresh_token: credential.refreshToken}, credential.refreshToken);
 }
 
 /** New tokens for a connection whose access token ran out; turned down once the server revoked it. */
 export async function refreshMcpTokens(server: McpServer, credential: McpCredential): Promise<Result<McpCredential, ApiError>> {
-	return (await refreshMcpSignIn(server, credential)).map((signIn) => signIn.credential);
+	if (!credential.refreshToken) {
+		return Err(ApiErr.credentialsRejected());
+	}
+	return requestTokens(server, credential.clientId, {grant_type: 'refresh_token', refresh_token: credential.refreshToken}, credential.refreshToken);
 }
 
 export function isExpiring(credential: McpCredential): boolean {

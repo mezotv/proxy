@@ -50,10 +50,11 @@ spyOn(globalThis, 'fetch').mockImplementation((async (input: string | URL | Requ
 		return Response.json({client_id: 'client-1'}, {status: 201});
 	}
 	if (url.pathname === '/token') {
-		return Response.json({access_token: 'access-1', refresh_token: 'refresh-1', expires_in: 28800, workspace_name: 'Acme', workspace_id: 'ws-1', user_id: 'user-1'});
+		// Refreshed tokens come without the workspace: only `notion-get-self` names it.
+		return Response.json({access_token: 'access-1', refresh_token: 'refresh-1', expires_in: 3600, token_type: 'bearer', scope: '', resource: 'https://mcp.notion.com/mcp'});
 	}
-	const users = {results: [{type: 'person', id: 'user-1', name: 'Alex', email: 'Alex@Example.com'}], has_more: false};
-	return Response.json({jsonrpc: '2.0', id: 1, result: {content: [{type: 'text', text: JSON.stringify(users)}]}});
+	const self = {workspace: {id: 'ws-1', name: 'Acme'}, user: {type: 'person', id: 'user-1', name: 'Alex', email: 'Alex@Example.com'}};
+	return Response.json({jsonrpc: '2.0', id: 1, result: {content: [{type: 'text', text: JSON.stringify(self)}]}});
 }) as typeof fetch);
 
 // The sign-in routes the api makes of Notion's declaration.
@@ -126,7 +127,7 @@ describe('handleNotionCallbackRoute', () => {
 
 		const toolCall = notion.requests.find((request) => request.url.pathname === '/mcp');
 		expect(toolCall?.headers.get('authorization')).toBe('Bearer access-1');
-		expect(JSON.parse(toolCall?.body ?? '{}').params).toEqual({name: 'notion-get-users', arguments: {user_id: 'self'}});
+		expect(JSON.parse(toolCall?.body ?? '{}').params).toEqual({name: 'notion-get-self', arguments: {}});
 		const created = createConnection.mock.calls[0]?.[0];
 		expect(created).toMatchObject({orgId: 'org-1', integrationId: 'notion', account: 'alex@example.com · Acme', defaults: ['read']});
 		expect(JSON.parse(String(created.credential).replace(/^enc:/, ''))).toMatchObject({clientId: 'client-1', accessToken: 'access-1', refreshToken: 'refresh-1'});

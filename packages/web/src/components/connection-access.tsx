@@ -258,8 +258,9 @@ export function ConnectionAccess({
 			onChange(Object.fromEntries(changing.map((id) => [id, setting(id, next)]))),
 		);
 	};
+	// As far from the edge above as the rows are from the side, in a card the list sits in.
 	const all = settable.length > 1 && (
-		<div className="flex md:px-3">
+		<div className="flex pt-3 md:px-3">
 			<Button variant="outline" size="sm" onClick={() => setAll(!allOn)}>
 				{allOn ? 'Disable all' : 'Enable all'}
 			</Button>

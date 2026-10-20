@@ -5,7 +5,6 @@ import {ApiErr, type ApiError, Do, parseSchema} from '@proxy/utils';
 import {LINEAR_PRIORITIES, LINEAR_STATUS_TYPES} from '@proxy/integrations';
 
 import {callMcpTool} from '../mcp/mcp-client';
-import type {McpAccess} from '../mcp/built-in';
 import type {McpServer} from '../mcp/mcp-oauth';
 
 /**
@@ -61,9 +60,8 @@ const workspaceSchema = z.object({name: z.string()});
  * The Linear account a sign-in is for, by who signed in and their workspace:
  * "alex@example.com · Acme". Signing in to another workspace is another connection.
  */
-export function getLinearAccount(access: McpAccess): Promise<Result<string, ApiError>> {
+export function getLinearAccount(token: string): Promise<Result<string, ApiError>> {
 	return Do(async ($) => {
-		const token = access.accessToken;
 		const [userText, workspaceText] = await Promise.all([callMcpTool(LINEAR, token, 'get_user', {query: 'me'}), callMcpTool(LINEAR, token, 'get_workspace', {})]);
 		const user = $(parseJson($(userText), userSchema));
 		const workspace = $(parseJson($(workspaceText), workspaceSchema));

@@ -9,7 +9,7 @@ import type {AuthenticatedRequest} from '../../server/middleware/require-auth';
 import {requireUserOrgId} from '../../utils/user-org';
 import {toConnectionResponse, type ConnectionResponse} from '../connection-response';
 import {saveConnection, signInFlow, signInRoutes, type Connected, type ReturnTo, type SignInRequest} from '../connect-flow';
-import type {BuiltInMcp, McpAccess} from './built-in';
+import type {BuiltInMcp} from './built-in';
 import {exchangeMcpCode, mcpAuthorizeUrl, registerMcpClient, type McpCredential, type McpServer} from './mcp-oauth';
 import type {McpKeyCredential} from './mcp-session';
 
@@ -30,11 +30,11 @@ export function startMcpSignIn<K extends object>(server: McpServer, {redirectUri
 }
 
 /** What a connection shows as its account: as the provider names it, or that it was signed in to, where the provider says nothing of who did. */
-export function accountOf(builtIn: BuiltInMcp, access: McpAccess): Promise<Result<string, ApiError>> {
+export function accountOf(builtIn: BuiltInMcp, accessToken: string): Promise<Result<string, ApiError>> {
 	if (!builtIn.account) {
 		return Promise.resolve(Ok(SIGNED_IN));
 	}
-	return builtIn.account(access);
+	return builtIn.account(accessToken);
 }
 
 // A connection of a provider that says nothing of who signed in can't be told to be the same
@@ -60,9 +60,9 @@ function builtInSignIn(builtIn: BuiltInMcp) {
 		start: (request: SignInRequest) => startMcpSignIn(server, request, {}),
 		finish: ({redirectUri, code, verifier, kept}: {redirectUri: string; code: string; verifier: string; kept: Kept}) =>
 			Do<Connected<McpCredential>, ApiError>(async ($) => {
-				const signIn = $(await exchangeMcpCode(server, {clientId: kept.clientId, redirectUri, code, verifier}));
-				const account = $(await accountOf(builtIn, {accessToken: signIn.credential.accessToken, workspaceName: signIn.workspaceName}));
-				return {account, credential: signIn.credential, defaults: builtIn.defaults, ...anonymity(builtIn), ...(kept.name ? {name: kept.name} : {})};
+				const credential = $(await exchangeMcpCode(server, {clientId: kept.clientId, redirectUri, code, verifier}));
+				const account = $(await accountOf(builtIn, credential.accessToken));
+				return {account, credential, defaults: builtIn.defaults, ...anonymity(builtIn), ...(kept.name ? {name: kept.name} : {})};
 			}),
 	};
 }
@@ -99,7 +99,7 @@ export function keyAccountOf(builtIn: BuiltInMcp, key: string): Promise<Result<s
 	if (!builtIn.account) {
 		return Promise.resolve(Ok(keyAccount(key)));
 	}
-	return builtIn.account({accessToken: key, workspaceName: null});
+	return builtIn.account(key);
 }
 
 /**

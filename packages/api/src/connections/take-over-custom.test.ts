@@ -1,7 +1,7 @@
 import {beforeEach, describe, expect, mock, spyOn, test} from 'bun:test';
-import {Ok, type Result} from 'ts-results-es';
+import {Err, Ok, type Result} from 'ts-results-es';
 
-import type {ApiError} from '@proxy/utils';
+import {ApiErr, type ApiError} from '@proxy/utils';
 
 const listCustomMcpConnections = mock();
 const takeOverConnection = mock();
@@ -23,16 +23,22 @@ const listCollectionEntries = mock();
 
 mock.module('@proxy/db/audit', () => ({listCollectionEntries}));
 
-// Linear names who a key is for, and Notion who signed in, beside the workspace its tokens name.
+// Linear names who a key is for, and Notion who signed in and the workspace, for the access token
+// it is asked with; one it doesn't take is turned down.
 const linearMcp = await import('./linear/linear-mcp');
 mock.module('./linear/linear-mcp', () => ({...linearMcp, getLinearAccount: mock(async () => Ok('alex@example.com · Acme'))}));
 const notionMcp = await import('./notion/notion-mcp');
 mock.module('./notion/notion-mcp', () => ({
 	...notionMcp,
-	getNotionAccount: mock(async ({workspaceName}: {workspaceName: string | null}) => Ok(workspaceName ? `alex@example.com · ${workspaceName}` : 'alex@example.com')),
+	getNotionAccount: mock(async (accessToken: string) => {
+		if (accessToken.startsWith('down-')) {
+			return Err(ApiErr.providerUnreachable(new Error('Notion is down')));
+		}
+		return accessToken.startsWith('access-') ? Ok('alex@example.com · Acme') : Err(ApiErr.credentialsRejected());
+	}),
 }));
 
-// Notion's token endpoint: refreshes the tokens and names the workspace with them, but not for a
+// Notion's token endpoint: refreshes the tokens, a new refresh token each time, but not for a
 // sign-in it revoked.
 const tokenRequests: string[] = [];
 spyOn(globalThis, 'fetch').mockImplementation((async (input: string | URL | Request, init?: RequestInit) => {
@@ -41,7 +47,10 @@ spyOn(globalThis, 'fetch').mockImplementation((async (input: string | URL | Requ
 	if (body.get('refresh_token') === 'revoked') {
 		return Response.json({error: 'invalid_grant'}, {status: 400});
 	}
-	return Response.json({access_token: 'access-2', refresh_token: 'refresh-2', expires_in: 3600, token_type: 'bearer', workspace_name: 'Acme'});
+	if (body.get('refresh_token') === 'refresh-down') {
+		return Response.json({access_token: 'down-2', refresh_token: 'refresh-3', expires_in: 3600, token_type: 'bearer'});
+	}
+	return Response.json({access_token: 'access-2', refresh_token: 'refresh-2', expires_in: 3600, token_type: 'bearer'});
 }) as typeof fetch);
 
 mock.module('../observability/log', () => ({
@@ -202,16 +211,21 @@ function customRow(id: string, account: string, credential: object, tools: strin
 	};
 }
 
-// What each connection moved became, as `takeOverConnection` was told with it locked.
+// What each connection moved became, as `takeOverConnection` was told with it locked, and the
+// credentials kept on the way.
 let moves: Array<{connectionId: string} & Record<string, string | null | object>> = [];
+let kept: Array<{connectionId: string; credential: string}> = [];
 
 beforeEach(() => {
 	mock.clearAllMocks();
 	moves = [];
+	kept = [];
 	tokenRequests.length = 0;
 	listCollectionEntries.mockResolvedValue(Ok([]));
-	takeOverConnection.mockImplementation(async (connectionId: string, move: () => Promise<Result<object, ApiError>>) => {
-		const moved = await move();
+	takeOverConnection.mockImplementation(async (connectionId: string, move: (keepCredential: (credential: string) => Promise<void>) => Promise<Result<object, ApiError>>) => {
+		const moved = await move(async (credential) => {
+			kept.push({connectionId, credential});
+		});
 		if (moved.isErr()) {
 			return moved;
 		}
@@ -269,22 +283,56 @@ describe('takeOverCustomConnections', () => {
 		expect(tokenRequests).toEqual([]);
 	});
 
-	test('a sign-in is refreshed first, for the account as signing in again would name it, workspace and all', async () => {
-		const notionSignIn = {...EXA_SIGN_IN, url: 'https://mcp.notion.com/mcp', server: {...EXA_SIGN_IN.server, url: 'https://mcp.notion.com/mcp', tokenUrl: 'https://mcp.notion.com/token'}};
+	const NOTION_SIGN_IN = {...EXA_SIGN_IN, url: 'https://mcp.notion.com/mcp', server: {...EXA_SIGN_IN.server, url: 'https://mcp.notion.com/mcp', tokenUrl: 'https://mcp.notion.com/token'}};
+	const EXPIRED = '2026-01-01T00:00:00.000Z';
+	const read = (credential: string | null | object | undefined) => JSON.parse(String(credential).replace(/^enc:/, ''));
+
+	test('a sign-in still good is asked for its account as it is, workspace and all', async () => {
+		listCustomMcpConnections.mockResolvedValue(Ok([customRow('mcp-notion', 'mcp.notion.com/mcp', NOTION_SIGN_IN, ['notion-search'], ['notion-search'])]));
+
+		await takeOverCustomConnections();
+
+		expect(tokenRequests).toEqual([]);
+		expect(moves[0]).toMatchObject({connectionId: 'mcp-notion', integrationId: 'notion', account: 'alex@example.com · Acme', defaults: ['read']});
+		expect(read(moves[0]?.credential)).toMatchObject({accessToken: 'access-1', refreshToken: 'refresh-1'});
+	});
+
+	test('a sign-in that ran out, or was turned down before its time, is refreshed first, and the new tokens kept at once', async () => {
 		listCustomMcpConnections.mockResolvedValue(
 			Ok([
-				customRow('mcp-notion', 'mcp.notion.com/mcp', notionSignIn, ['notion-search'], ['notion-search']),
-				customRow('mcp-revoked', 'mcp.notion.com/mcp', {...notionSignIn, refreshToken: 'revoked'}, ['notion-search'], ['notion-search']),
+				customRow('mcp-expired', 'mcp.notion.com/mcp', {...NOTION_SIGN_IN, expiresAt: EXPIRED}, ['notion-search'], []),
+				customRow('mcp-stale', 'mcp.notion.com/mcp', {...NOTION_SIGN_IN, accessToken: 'stale-1'}, ['notion-search'], []),
 			]),
 		);
 
 		await takeOverCustomConnections();
 
 		expect(tokenRequests).toEqual(['https://mcp.notion.com/token', 'https://mcp.notion.com/token']);
-		expect(moves[0]).toMatchObject({connectionId: 'mcp-notion', integrationId: 'notion', account: 'alex@example.com · Acme', defaults: ['read']});
-		expect(JSON.parse(String(moves[0]?.credential).replace(/^enc:/, ''))).toMatchObject({clientId: 'client-1', accessToken: 'access-2', refreshToken: 'refresh-2'});
-		// A sign-in Notion revoked carries nothing over: it waits to be signed in to.
-		expect(moves[1]).toMatchObject({connectionId: 'mcp-revoked', integrationId: 'notion', account: 'mcp.notion.com/mcp', credential: null});
+		expect(moves.map((move) => [move.connectionId, move.account, read(move.credential).refreshToken])).toEqual([
+			['mcp-expired', 'alex@example.com · Acme', 'refresh-2'],
+			['mcp-stale', 'alex@example.com · Acme', 'refresh-2'],
+		]);
+		// Kept on the custom connection as it was, its server's endpoints and all.
+		expect(kept.map((keep) => keep.connectionId)).toEqual(['mcp-expired', 'mcp-stale']);
+		expect(read(kept[0]?.credential)).toMatchObject({auth: 'oauth', url: 'https://mcp.notion.com/mcp', accessToken: 'access-2', refreshToken: 'refresh-2'});
+	});
+
+	test('a sign-in Notion revoked carries nothing over: it waits to be signed in to', async () => {
+		listCustomMcpConnections.mockResolvedValue(Ok([customRow('mcp-revoked', 'mcp.notion.com/mcp', {...NOTION_SIGN_IN, expiresAt: EXPIRED, refreshToken: 'revoked'}, ['notion-search'], [])]));
+
+		await takeOverCustomConnections();
+
+		expect(moves[0]).toMatchObject({connectionId: 'mcp-revoked', integrationId: 'notion', account: 'mcp.notion.com/mcp', credential: null});
+		expect(kept).toEqual([]);
+	});
+
+	test('Notion out of reach after a refresh leaves the connection to the next start, the new refresh token kept', async () => {
+		listCustomMcpConnections.mockResolvedValue(Ok([customRow('mcp-notion', 'mcp.notion.com/mcp', {...NOTION_SIGN_IN, expiresAt: EXPIRED, refreshToken: 'refresh-down'}, ['notion-search'], [])]));
+
+		await takeOverCustomConnections();
+
+		expect(moves).toEqual([]);
+		expect(read(kept[0]?.credential)).toMatchObject({auth: 'oauth', accessToken: 'down-2', refreshToken: 'refresh-3'});
 	});
 
 	test("a credential that can't be read is left as it is, for the next start", async () => {

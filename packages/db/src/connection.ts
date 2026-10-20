@@ -319,12 +319,16 @@ export type MovedConnection = {
  * every agent's settings, replaced; and its tool runs in the activity log, rewritten. `move` says
  * what it becomes, and runs with the connection locked, only while it is still a custom
  * connection, so two servers starting at once move it once, and only one of them refreshes its
- * tokens: `Ok(false)` when another did. It must not use the database itself, whose connection
- * the lock holds, the local database having only one.
+ * tokens: `Ok(false)` when another did. Tokens refreshed on the way are kept with `keepCredential`
+ * at once, even when the move then fails, since a provider may take back the refresh token they
+ * replaced. `move` must not use the database itself, whose connection the lock holds, the local
+ * database having only one.
  */
 export async function takeOverConnection(
 	connectionId: string,
-	move: () => Promise<Result<MovedConnection, ApiError>>,
+	move: (
+		keepCredential: (credential: string) => Promise<void>,
+	) => Promise<Result<MovedConnection, ApiError>>,
 ): Promise<Result<boolean, ApiError>> {
 	const done = await wrapDb(() =>
 		db.$transaction(
@@ -334,7 +338,9 @@ export async function takeOverConnection(
 				if (locked.length === 0) {
 					return Ok(false);
 				}
-				const moved = await move();
+				const moved = await move(async (credential) => {
+					await tx.connection.update({where: {id: connectionId}, data: {credential}});
+				});
 				if (moved.isErr()) {
 					return moved;
 				}

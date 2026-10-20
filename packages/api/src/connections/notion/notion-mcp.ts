@@ -4,7 +4,6 @@ import {z} from 'zod';
 import {ApiErr, type ApiError, Do, parseSchema} from '@proxy/utils';
 
 import {callMcpTool} from '../mcp/mcp-client';
-import type {McpAccess} from '../mcp/built-in';
 import type {McpServer} from '../mcp/mcp-oauth';
 
 /**
@@ -50,21 +49,22 @@ function parseJson<T>(text: string, schema: z.ZodType<T>): Result<T, ApiError> {
 		.andThen((json) => parseSchema(schema, json).mapErr((error) => ApiErr.providerUnreachable(error)));
 }
 
-const usersSchema = z.object({results: z.array(z.object({name: z.string().optional(), email: z.string().optional()}))});
+const selfSchema = z.object({workspace: z.object({name: z.string()}), user: z.object({name: z.string().optional(), email: z.string().optional()})});
 
 /**
- * The Notion account a sign-in is for, by who signed in and the workspace they chose:
- * "alex@example.com · Acme". Signing in to another workspace is another connection.
+ * The Notion account a sign-in is for, by who signed in and the workspace they chose, as
+ * `notion-get-self` names them: "alex@example.com · Acme". Signing in to another workspace is
+ * another connection.
  */
-export function getNotionAccount(access: McpAccess): Promise<Result<string, ApiError>> {
+export function getNotionAccount(accessToken: string): Promise<Result<string, ApiError>> {
 	return Do(async ($) => {
-		const text = $(await callMcpTool(NOTION, access.accessToken, 'notion-get-users', {user_id: 'self'}));
-		const user = $(parseJson(text, usersSchema)).results[0];
-		const who = user?.email?.toLowerCase() ?? user?.name;
+		const text = $(await callMcpTool(NOTION, accessToken, 'notion-get-self', {}));
+		const {workspace, user} = $(parseJson(text, selfSchema));
+		const who = user.email?.toLowerCase() ?? user.name;
 		if (!who) {
 			return $(Err(ApiErr.providerUnreachable(new Error('Notion did not say who signed in'))));
 		}
-		return access.workspaceName ? `${who} · ${access.workspaceName}` : who;
+		return `${who} · ${workspace.name}`;
 	});
 }
 
