@@ -1068,7 +1068,6 @@ const plaid: Integration = {
 	id: 'plaid',
 	name: 'Plaid',
 	description: 'Balances and transactions from your bank accounts, cards and loans',
-	experiment: 'plaid',
 	actions: [
 		{
 			id: 'readBalances',
