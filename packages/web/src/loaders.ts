@@ -1,7 +1,7 @@
 import {getSignInMethods} from '@/client/auth-client';
 import {
 	type ActivityFilter,
-	getActivitySummary,
+	getActivityLanes,
 	getAgent,
 	listActivity,
 	listAgents,
@@ -12,21 +12,22 @@ import {getMe} from '@/client/me-client';
 import {getAuthorizationRequest} from '@/client/oauth-client';
 import {listRecords} from '@/client/records-client';
 import {INFO_INTEGRATION_ID} from '@proxy/integrations';
-import {browserTimeZone, daySpan} from '@/lib/activity-graph';
+import {daySpan} from '@/lib/activity-days';
+import {LOADED_MINUTES, windowStart} from '@/lib/agent-lanes';
 import {findIntegration} from '@/lib/integrations';
 import {unwrapLoaderResult, unwrapOrNull} from '@/lib/loader-utils';
 import {redirect} from 'react-router';
 
 // The human side's pages, each loaded from the api on arrival and again after every change.
 
-// Home: what is connected, for the logos under its input, and what was done, for the graph under
-// them. The page works without them, so a list the api doesn't answer shows as empty, and a graph
-// it doesn't as none, rather than as an error.
+// Home: what is connected, for the logos under its input, and what the agents are doing, for the
+// lanes under them. The page works without them, so a list the api doesn't answer shows as empty,
+// and lanes it doesn't as none, rather than as an error.
 export async function homeLoader() {
 	const [connections, agents, activity] = await Promise.all([
 		listConnections(),
 		listAgents(),
-		getActivitySummary(browserTimeZone()),
+		getActivityLanes(windowStart(LOADED_MINUTES, new Date()).toISOString()),
 	]);
 	return {
 		connections: connections.map((answer) => answer.connections).unwrapOr([]),

@@ -532,6 +532,17 @@ function randomRequest(): Request | null {
 	return {connection, collection, action: pick(requestsOf(collection))};
 }
 
+// A request the agent may make, found by trying; `fallback` when none turns up.
+function allowedRequest(agent: (typeof agents)[number], fallback: Request): Request {
+	for (let attempt = 0; attempt < 20; attempt++) {
+		const candidate = randomRequest();
+		if (candidate && isAllowed(agent, candidate)) {
+			return candidate;
+		}
+	}
+	return fallback;
+}
+
 // Allowed or denied by the agent's real access, the way the api decides.
 function isAllowed(agent: (typeof agents)[number], request: Request): boolean {
 	const {connection, collection, action} = request;
@@ -582,6 +593,10 @@ const TASKS: [{title: string; goal: string}, ...Array<{title: string; goal: stri
 ];
 
 const MINUTE = 60 * 1000;
+// A login still in use has this many tasks going at once in the past hours, the usual way agents
+// work, with this many requests spread over them.
+const CONCURRENT_TASKS = 5;
+const RECENT_REQUESTS = 14;
 
 let entryCount = 0;
 let taskCount = 0;
@@ -598,6 +613,59 @@ for (const agent of agents) {
 	}))
 		.flatMap(({request, createdAt}) => (request ? [{request, createdAt}] : []))
 		.sort((a, b) => a.createdAt - b.createdAt);
+	// A login still in use has several tasks going at once in the past hours, its latest requests
+	// spread over them, so the home page's lanes show how agents really work.
+	const recent = agent.revokedAt === null ? requests.splice(-RECENT_REQUESTS) : [];
+	if (recent.length > 0) {
+		const concurrent = await Promise.all(
+			Array.from({length: CONCURRENT_TASKS}, async (_, index) => {
+				const startedAt = now - (110 - index * 20) * MINUTE - random() * 15 * MINUTE;
+				// The first two are done; the rest are under way.
+				const finishedAt = index < 2 ? startedAt + (25 + random() * 30) * MINUTE : null;
+				const taskVia: 'web' | 'mcp' = random() < 0.7 ? 'mcp' : 'web';
+				const task = await db.agentTask.create({
+					data: {
+						orgId: org.id,
+						agentId: agent.id,
+						...pick(TASKS),
+						via: taskVia,
+						createdAt: new Date(startedAt),
+						finishedAt: finishedAt === null ? null : new Date(finishedAt),
+					},
+				});
+				taskCount += 1;
+				return {id: task.id, via: taskVia, startedAt, endsAt: finishedAt ?? now};
+			}),
+		);
+		for (const [index, {request: picked}] of recent.entries()) {
+			const task = concurrent[index % concurrent.length];
+			if (!task) {
+				continue;
+			}
+			// Mostly what the login may do: a refusal now and then, not at every turn.
+			const request =
+				isAllowed(agent, picked) || random() < 0.2 ? picked : allowedRequest(agent, picked);
+			const createdAt = task.startedAt + random() * (task.endsAt - task.startedAt);
+			lastActiveAt = Math.max(lastActiveAt, createdAt);
+			const onOneRecord = request.action !== 'list' && request.action !== 'create';
+			await db.auditEntry.create({
+				data: {
+					orgId: org.id,
+					agentId: agent.id,
+					connectionId: request.connection.id,
+					collectionId: request.collection.id,
+					action: request.action,
+					recordTitle: onOneRecord ? recordTitle(request.connection, request.collection.id) : null,
+					query: null,
+					outcome: isAllowed(agent, request) ? 'allowed' : 'denied',
+					via: task.via,
+					taskId: task.id,
+					createdAt: new Date(createdAt),
+				},
+			});
+			entryCount += 1;
+		}
+	}
 
 	let taskId: string | null = null;
 	let via: 'web' | 'mcp' = 'web';
@@ -606,8 +674,6 @@ for (const agent of agents) {
 		if (leftInTask === 0 || taskId === null) {
 			leftInTask = 1 + Math.floor(random() * 4);
 			const lastIndex = Math.min(index + leftInTask, requests.length) - 1;
-			// The latest task of a login still in use is under way.
-			const underWay = agent.revokedAt === null && lastIndex === requests.length - 1;
 			// Most come in over MCP, as Claude or ChatGPT would; some through the agent pages.
 			via = random() < 0.7 ? 'mcp' : 'web';
 			const task = await db.agentTask.create({
@@ -617,9 +683,7 @@ for (const agent of agents) {
 					...pick(TASKS),
 					via,
 					createdAt: new Date(createdAt - MINUTE),
-					finishedAt: underWay
-						? null
-						: new Date((requests[lastIndex]?.createdAt ?? createdAt) + MINUTE),
+					finishedAt: new Date((requests[lastIndex]?.createdAt ?? createdAt) + MINUTE),
 				},
 			});
 			taskId = task.id;

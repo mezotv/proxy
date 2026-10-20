@@ -1,7 +1,7 @@
 import type {AgentProviderId} from '@proxy/integrations';
 import {z} from 'zod';
 import {
-	activitySummarySchema,
+	activityLanesSchema,
 	activityTaskSchema,
 	agentSchema,
 	auditEntrySchema,
@@ -86,11 +86,11 @@ export function listActivity(filter: ActivityFilter) {
 	);
 }
 
-/** The home page's graph: each day's requests on the browser's clock, and the past week's by action. */
-export function getActivitySummary(timeZone: string) {
+/** The home page's lanes: every task under way at some point since `from`, an ISO instant, with what was done for each. */
+export function getActivityLanes(from: string) {
 	return apiRequest(
 		'GET',
-		`/api/activity/summary?${new URLSearchParams({timeZone})}`,
-		activitySummarySchema,
+		`/api/activity/lanes?${new URLSearchParams({from})}`,
+		activityLanesSchema,
 	);
 }

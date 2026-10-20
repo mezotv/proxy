@@ -3,15 +3,15 @@ import {Ok} from 'ts-results-es';
 
 const getUserOrgId = mock();
 const listAuditEntries = mock();
-const countAuditEntriesByDay = mock();
-const countAuditEntriesByAction = mock();
+const summarizeTaskRequests = mock();
 
 mock.module('@proxy/db/organization', () => ({getUserOrgId}));
-mock.module('@proxy/db/audit', () => ({listAuditEntries, countAuditEntriesByDay, countAuditEntriesByAction}));
+mock.module('@proxy/db/audit', () => ({listAuditEntries, summarizeTaskRequests}));
 
 const listAgentTasks = mock();
+const listAgentTasksSince = mock();
 
-mock.module('@proxy/db/task', () => ({listAgentTasks}));
+mock.module('@proxy/db/task', () => ({listAgentTasks, listAgentTasksSince}));
 
 function makeRequest(query: Record<string, string>) {
 	return {user: {userId: 'user-1', email: 'test@example.com', name: 'Test User'}, query};
@@ -22,9 +22,8 @@ beforeEach(() => {
 	getUserOrgId.mockResolvedValue(Ok('org-1'));
 	listAuditEntries.mockResolvedValue(Ok([]));
 	listAgentTasks.mockResolvedValue(Ok([]));
-	countAuditEntriesByDay.mockResolvedValue(Ok([{day: '2026-10-16', agentId: null, count: 2, denied: 0}]));
-	countAuditEntriesByAction.mockResolvedValue(Ok([{connectionId: 'c1', collectionId: 'events', action: 'create', outcome: 'allowed', count: 2}]));
-	// Late on the 15th in UTC: already the 16th in Berlin.
+	listAgentTasksSince.mockResolvedValue(Ok([]));
+	summarizeTaskRequests.mockResolvedValue(Ok([]));
 	setSystemTime(new Date('2026-10-15T23:30:00Z'));
 });
 
@@ -32,26 +31,50 @@ afterEach(() => {
 	setSystemTime();
 });
 
-describe('handleActivitySummaryRoute', () => {
-	test('counts a year of whole weeks and the past week, by days on the person’s clock', async () => {
-		const {handleActivitySummaryRoute} = await import('./route');
-		const result = await handleActivitySummaryRoute(makeRequest({timeZone: 'Europe/Berlin'}) as never);
+describe('handleActivityLanesRoute', () => {
+	test('answers the tasks under way since the time asked for, with what was done for each', async () => {
+		const task = {id: 'task-1', agentId: 'agent-1', title: 'Triage inbox', goal: 'Archive the newsletters', via: 'mcp', createdAt: new Date('2026-10-15T20:00:00Z'), finishedAt: null};
+		listAgentTasksSince.mockResolvedValue(Ok([task]));
+		summarizeTaskRequests.mockResolvedValue(
+			Ok([
+				{taskId: 'task-1', connectionId: 'notion-1', outcome: 'allowed', count: 5, first: new Date('2026-10-15T20:05:00Z')},
+				{taskId: 'task-1', connectionId: 'mail-1', outcome: 'allowed', count: 3, first: new Date('2026-10-15T20:01:00Z')},
+				{taskId: 'task-1', connectionId: 'mail-1', outcome: 'denied', count: 1, first: new Date('2026-10-15T20:40:00Z')},
+			]),
+		);
+		const {handleActivityLanesRoute} = await import('./route');
+		const result = await handleActivityLanesRoute(makeRequest({from: '2026-10-14T23:30:00Z'}) as never);
 
+		expect(listAgentTasksSince).toHaveBeenCalledWith('org-1', new Date('2026-10-14T23:30:00Z'), 200);
+		expect(summarizeTaskRequests).toHaveBeenCalledWith('org-1', ['task-1']);
 		expect(result.unwrap()).toEqual({
-			today: '2026-10-16',
-			days: [{day: '2026-10-16', agentId: null, count: 2, denied: 0}],
-			week: [{connectionId: 'c1', collectionId: 'events', action: 'create', outcome: 'allowed', count: 2}],
+			now: '2026-10-15T23:30:00.000Z',
+			from: '2026-10-14T23:30:00.000Z',
+			tasks: [
+				{
+					id: 'task-1',
+					agentId: 'agent-1',
+					title: 'Triage inbox',
+					goal: 'Archive the newsletters',
+					via: 'mcp',
+					startedAt: '2026-10-15T20:00:00.000Z',
+					finishedAt: null,
+					requests: 9,
+					denied: 1,
+					// Notion was used most, though the mailbox came first.
+					connectionIds: ['notion-1', 'mail-1'],
+				},
+			],
 		});
-		expect(countAuditEntriesByDay).toHaveBeenCalledWith('org-1', 'Europe/Berlin', '2025-10-11');
-		expect(countAuditEntriesByAction).toHaveBeenCalledWith('org-1', 'Europe/Berlin', '2026-10-10');
 	});
 
-	test('refuses what isn’t a time zone before it reaches the database', async () => {
-		const {handleActivitySummaryRoute} = await import('./route');
-		const result = await handleActivitySummaryRoute(makeRequest({timeZone: "UTC'; --"}) as never);
+	test('a window further back than a month is cut to one, and a time that is not one is refused', async () => {
+		const {handleActivityLanesRoute} = await import('./route');
+		await handleActivityLanesRoute(makeRequest({from: '2020-01-01T00:00:00Z'}) as never);
+		const bad = await handleActivityLanesRoute(makeRequest({from: 'yesterday'}) as never);
 
-		expect(result.unwrapErr().kind).toBe('parse_error');
-		expect(countAuditEntriesByDay).not.toHaveBeenCalled();
+		expect(listAgentTasksSince).toHaveBeenCalledWith('org-1', new Date('2026-09-14T23:30:00Z'), 200);
+		expect(bad.unwrapErr().kind).toBe('parse_error');
 	});
 });
 

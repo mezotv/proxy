@@ -2,9 +2,8 @@ import type {Result} from 'ts-results-es';
 import {z} from 'zod';
 
 import {type ApiError, Do, parseSchema} from '@proxy/utils';
-import {addDays, dayIn, isTimeZone} from '@proxy/utils/days';
-import {type AuditActionCount, type AuditDayCount, countAuditEntriesByAction, countAuditEntriesByDay, listAuditEntries} from '@proxy/db/audit';
-import {listAgentTasks} from '@proxy/db/task';
+import {listAuditEntries, summarizeTaskRequests} from '@proxy/db/audit';
+import {listAgentTasks, listAgentTasksSince} from '@proxy/db/task';
 
 import type {AuthenticatedRequest} from '../server/middleware/require-auth';
 import {requireUserOrgId} from '../utils/user-org';
@@ -81,30 +80,59 @@ export function handleListActivityRoute(request: AuthenticatedRequest): Promise<
 	});
 }
 
-// The home page's graph: 53 weeks, so a year of whole weeks ends in this one whatever day it is.
-const GRAPH_DAYS = 53 * 7;
-// Its summary line: today and the six days before it.
-const WEEK_DAYS = 7;
+// The home page's lanes: at most this many tasks, and a window at most this far back.
+const MAX_TASKS = 200;
+const MAX_WINDOW_MS = 31 * 24 * 60 * 60 * 1000;
 
-const summaryQuerySchema = z.object({timeZone: z.string().refine(isTimeZone, 'Not a time zone')});
+const lanesQuerySchema = z.object({from: z.iso.datetime({offset: true})});
 
-export type ActivitySummaryResponse = {
-	// Today on the person's clock, `2026-10-16`, the day the graph ends on.
-	today: string;
-	// Each agent's requests each day of the graph's, on the person's clock, days without any left
-	// out; an `agentId` of null is what Personal Agent Proxy did itself.
-	days: AuditDayCount[];
-	// The past week's requests by connection, collection, action and outcome, the most first.
-	week: AuditActionCount[];
+/** A task as the home page's lanes draw it: when it ran, and what was done for it. */
+export type LaneTaskResponse = ActivityTaskResponse & {
+	// How many requests were made for it, and how many of them were refused.
+	requests: number;
+	denied: number;
+	// The connections its requests used, the most used first, the earlier used first among equals.
+	connectionIds: string[];
 };
 
-/** The organization's activity by day for the home page's graph, and the past week's by action. */
-export function handleActivitySummaryRoute(request: AuthenticatedRequest): Promise<Result<ActivitySummaryResponse, ApiError>> {
+export type ActivityLanesResponse = {
+	// When the answer was made: the right edge of the lanes.
+	now: string;
+	from: string;
+	// Every task under way at some point since `from`, newest first.
+	tasks: LaneTaskResponse[];
+};
+
+/** The organization's tasks under way at some point since `?from=`, with what was done for each. */
+export function handleActivityLanesRoute(request: AuthenticatedRequest): Promise<Result<ActivityLanesResponse, ApiError>> {
 	return Do(async ($) => {
-		const {timeZone} = $(parseSchema(summaryQuerySchema, request.query));
+		const query = $(parseSchema(lanesQuerySchema, request.query));
 		const orgId = $(await requireUserOrgId(request));
-		const today = dayIn(new Date(), timeZone);
-		const [days, week] = await Promise.all([countAuditEntriesByDay(orgId, timeZone, addDays(today, 1 - GRAPH_DAYS)), countAuditEntriesByAction(orgId, timeZone, addDays(today, 1 - WEEK_DAYS))]);
-		return {today, days: $(days), week: $(week)};
+		const now = new Date();
+		const from = new Date(Math.max(new Date(query.from).getTime(), now.getTime() - MAX_WINDOW_MS));
+		const rows = $(await listAgentTasksSince(orgId, from, MAX_TASKS));
+		const requests = $(
+			await summarizeTaskRequests(
+				orgId,
+				rows.map((row) => row.id),
+			),
+		);
+		const tasks = rows.map(({createdAt, finishedAt, ...task}) => {
+			const own = requests.filter((row) => row.taskId === task.id);
+			const used = new Map<string, {count: number; first: Date}>();
+			for (const row of own) {
+				const known = used.get(row.connectionId) ?? {count: 0, first: row.first};
+				used.set(row.connectionId, {count: known.count + row.count, first: row.first < known.first ? row.first : known.first});
+			}
+			return {
+				...task,
+				startedAt: createdAt.toISOString(),
+				finishedAt: finishedAt?.toISOString() ?? null,
+				requests: own.reduce((total, row) => total + row.count, 0),
+				denied: own.filter((row) => row.outcome === 'denied').reduce((total, row) => total + row.count, 0),
+				connectionIds: [...used.entries()].sort((a, b) => b[1].count - a[1].count || a[1].first.getTime() - b[1].first.getTime()).map(([connectionId]) => connectionId),
+			};
+		});
+		return {now: now.toISOString(), from: from.toISOString(), tasks};
 	});
 }

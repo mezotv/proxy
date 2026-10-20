@@ -81,6 +81,25 @@ export async function listOpenAgentTasks(
 	);
 }
 
+/**
+ * The organization's tasks under way at some point since `from`: started before now and not
+ * finished before `from`; the newest `take` of them, newest first.
+ */
+export async function listAgentTasksSince(
+	orgId: string,
+	from: Date,
+	take: number,
+): Promise<Result<AgentTaskRow[], ApiError>> {
+	return wrapDb(() =>
+		db.agentTask.findMany({
+			where: {orgId, OR: [{finishedAt: null}, {finishedAt: {gte: from}}]},
+			select: taskSelect,
+			orderBy: {createdAt: 'desc'},
+			take,
+		}),
+	);
+}
+
 /** The organization's tasks among `ids`, for naming what the activity log's entries were for. */
 export async function listAgentTasks(
 	orgId: string,

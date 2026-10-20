@@ -2,7 +2,7 @@ import * as chrono from 'chrono-node';
 import {dayIn} from '@proxy/utils/days';
 import type {Intent} from '@/client/intent-client';
 import type {EmailQuery, FileKind, People, Person} from '@/client/widgets-client';
-import {browserTimeZone} from '@/lib/activity-graph';
+import {browserTimeZone} from '@/lib/activity-days';
 
 // What the home page's widgets make of the fields the api filled: the people names stand for,
 // times read as dates, and what to search mailboxes and file stores for.
@@ -360,7 +360,11 @@ const FILLER = new Set(
 export function emailQuery(intent: Intent, typed: string, now: Date): EmailQuery {
 	const [from = null] = fieldTexts(intent, 'from');
 	const since = sinceDay(typed, now);
-	return {from, words: fieldTexts(intent, 'about'), since: since ? dayIn(since, browserTimeZone()) : null};
+	return {
+		from,
+		words: fieldTexts(intent, 'about'),
+		since: since ? dayIn(since, browserTimeZone()) : null,
+	};
 }
 
 /** The terms of a search as they read: the first of each one's words, "flight, SFO". */

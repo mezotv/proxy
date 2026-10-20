@@ -13,7 +13,7 @@ import {Button} from '@proxy/ui/components/button';
 import {AgentLogo} from '@/components/brand-logo';
 import {Badge} from '@proxy/ui/components/badge';
 import {connectionLabel} from '@/lib/access';
-import {daySpan, formatDay} from '@/lib/activity-graph';
+import {daySpan, formatDay} from '@/lib/activity-days';
 import {formatDateTime} from '@/lib/format';
 import type {ActivityTask, AgentLogin} from '@/lib/types';
 import type {activityLoader} from '@/loaders';

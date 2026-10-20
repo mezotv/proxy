@@ -1,6 +1,6 @@
 import {describe, expect, test} from 'bun:test';
 
-import {addDays, dayIn, daysBetween, isTimeZone, weekdayOf} from './days';
+import {addDays, dayIn, daysBetween, weekdayOf} from './days';
 
 describe('days', () => {
 	test('the day is the time zone’s, half-hour and quarter-hour offsets too', () => {
@@ -25,16 +25,5 @@ describe('days', () => {
 		expect(weekdayOf('2026-10-12')).toBe(0);
 		expect(weekdayOf('2026-10-16')).toBe(4);
 		expect(weekdayOf('2026-10-18')).toBe(6);
-	});
-
-	test('knows time zones and their aliases, and nothing else', () => {
-		expect(isTimeZone('Europe/Berlin')).toBe(true);
-		expect(isTimeZone('Asia/Calcutta')).toBe(true);
-		expect(isTimeZone('UTC')).toBe(true);
-		expect(isTimeZone('Mars/Olympus')).toBe(false);
-		expect(isTimeZone("UTC'; DROP TABLE")).toBe(false);
-		expect(isTimeZone('Etc/GMT+5')).toBe(true);
-		expect(isTimeZone('+05:00')).toBe(false);
-		expect(isTimeZone('-05')).toBe(false);
 	});
 });

@@ -69,29 +69,23 @@ export const activityTaskSchema = z.object({
 	finishedAt: z.string().nullable(),
 });
 
-export const activitySummarySchema = z.object({
-	// Today on the browser's clock, `2026-10-16`.
-	today: z.string(),
-	// Each agent's requests each day, days without any left out; a null agent is Personal Agent
-	// Proxy's own.
-	days: z.array(
-		z.object({
-			day: z.string(),
-			agentId: z.string().nullable(),
-			count: z.number(),
-			denied: z.number(),
-		}),
-	),
-	// The past week's requests by action, the most first.
-	week: z.array(
-		z.object({
-			connectionId: z.string(),
-			collectionId: z.string(),
-			action: z.string(),
-			outcome: z.enum(['allowed', 'denied']),
-			count: z.number(),
-		}),
-	),
+// A task as the home page's lanes draw it: when it ran, and what was done for it.
+export const laneTaskSchema = activityTaskSchema.extend({
+	// How many requests were made for it, and how many of them were refused.
+	requests: z.number(),
+	denied: z.number(),
+	// The connections its requests used, the most used first.
+	connectionIds: z.array(z.string()),
 });
 
-export type ActivitySummary = z.infer<typeof activitySummarySchema>;
+export type LaneTask = z.infer<typeof laneTaskSchema>;
+
+export const activityLanesSchema = z.object({
+	// When the answer was made: the right edge of the lanes.
+	now: z.string(),
+	from: z.string(),
+	// Every task under way at some point since `from`, newest first.
+	tasks: z.array(laneTaskSchema),
+});
+
+export type ActivityLanes = z.infer<typeof activityLanesSchema>;
